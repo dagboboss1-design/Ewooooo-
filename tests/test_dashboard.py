@@ -19,7 +19,7 @@ def test_watchlist_contains_requested_assets_and_timeframes():
     payload = client.get("/api/dashboard/config").json()
     symbols = {asset["symbol"] for asset in payload["assets"]}
     assert {"XAU/USD", "XAG/USD", "BTC/USD", "DXY"} <= symbols
-    assert {"M5", "M15", "M30", "H1", "H4"} <= set(payload["timeframes"])
+    assert {"M5", "M15", "M30", "H1", "H4", "D1"} <= set(payload["timeframes"])
 
 
 def test_market_endpoint_does_not_fabricate_quotes(monkeypatch):
@@ -80,3 +80,19 @@ def test_journal_create_close_and_summary(tmp_path, monkeypatch):
 def test_journal_rejects_invalid_side():
     response = client.post("/api/journal", json={"symbol":"EUR/USD","side":"HOLD","setup_text":"test"})
     assert response.status_code == 400
+
+
+def test_daily_timeframe_maps_to_provider_interval(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    import pandas as pd
+    class FakeTwelveData:
+        def __init__(self, key): pass
+        async def candles(self, symbol, interval, outputsize):
+            assert interval == "1day"
+            return pd.DataFrame([{"time":"2026-11-05","open":1.0,"high":1.1,"low":0.9,"close":1.05}])
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(twelve_data_api_key="test", market_data_provider="twelve_data"))
+    monkeypatch.setattr(dashboard_module, "TwelveDataClient", FakeTwelveData)
+    response = client.get("/api/market/candles?symbol=EUR/USD&timeframe=D1&outputsize=80")
+    assert response.status_code == 200
+    assert response.json()["timeframe"] == "D1"
+    assert response.json()["candles"][0]["close"] == 1.05

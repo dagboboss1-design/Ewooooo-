@@ -30,8 +30,8 @@ ASSETS = [
     {"symbol": "BTC/USD", "label": "BTC/USD", "class": "crypto"},
     {"symbol": "DXY", "label": "DXY", "class": "index"},
 ]
-TIMEFRAMES = ["M5", "M15", "M30", "H1", "H4"]
-INTERVALS = {"M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H4": "4h"}
+TIMEFRAMES = ["M5", "M15", "M30", "H1", "H4", "D1"]
+INTERVALS = {"M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H4": "4h", "D1": "1day"}
 app = FastAPI(title="Ewooooo Forex Quant Signal System", version="0.4.3")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
@@ -149,7 +149,7 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
             token = selected_oanda_token(settings)
             if not token or not settings.oanda_account_id:
                 raise HTTPException(status_code=503, detail="OANDA credentials are not configured.")
-            frame = await OandaClient(token, settings.oanda_environment).candles(symbol.replace("/", "_"), timeframe, outputsize)
+            frame = await OandaClient(token, settings.oanda_environment).candles(symbol.replace("/", "_"), "D" if timeframe == "D1" else timeframe, outputsize)
     except HTTPException:
         raise
     except (httpx.HTTPError, LookupError, ValueError) as exc:

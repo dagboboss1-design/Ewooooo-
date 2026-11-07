@@ -9,7 +9,7 @@ The Phase 4 dashboard is a responsive dark institutional-style web interface, de
 - Crypto: BTC/USD
 - Index: DXY
 
-Selectable chart timeframes: M5, M15, M30, H1, H4. The default selection is M15.
+Selectable chart timeframes: M5, M15, M30, H1, H4, D1 (1 day). The default selection is M15. The dashboard also calculates a provisional daily bias from the last completed daily candles versus EMA20 and its recent slope; the newest daily candle is excluded to avoid using a still-forming bar. This is contextual analysis, not a standalone trade signal.
 
 ## Run locally
 
