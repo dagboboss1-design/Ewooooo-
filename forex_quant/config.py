@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     )
     oanda_granularity: str = "H1"
     oanda_price_component: str = "MBA"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
     data_dir: str = "./data"
     database_url: str = "sqlite:///./data/metadata.db"
     biquote_calendar_url: str = "https://biquote.io/api/calendar/upcoming"
