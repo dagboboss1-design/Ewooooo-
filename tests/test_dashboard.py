@@ -16,19 +16,28 @@ def test_dashboard_serves_mobile_page():
 def test_watchlist_contains_requested_assets_and_timeframes():
     payload = client.get("/api/dashboard/config").json()
     symbols = {asset["symbol"] for asset in payload["assets"]}
-    assert {"XAU_USD", "XAG_USD", "BTC_USD", "DXY"} <= symbols
-    assert {"M5", "M15"} <= set(payload["timeframes"])
+    assert {"XAU/USD", "XAG/USD", "BTC/USD", "DXY"} <= symbols
+    assert {"M5", "M15", "M30", "H1", "H4"} <= set(payload["timeframes"])
 
 
 def test_market_endpoint_does_not_fabricate_quotes(monkeypatch):
     from forex_quant.dashboard import app as dashboard_module
     monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
-        oanda_practice_token="", oanda_account_id="", oanda_environment="practice"
+        twelve_data_api_key="", market_data_provider="twelve_data"
     ))
     payload = client.get("/api/market").json()
     assert payload["quotes"] == []
     assert payload["as_of"] is None
     assert payload["status"] == "awaiting_provider_credentials"
+
+
+def test_candle_endpoint_requires_key(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        twelve_data_api_key="", market_data_provider="twelve_data"
+    ))
+    response = client.get("/api/market/candles?symbol=EUR/USD&timeframe=M15")
+    assert response.status_code == 503
 
 
 def test_ai_chat_requires_private_server_key(monkeypatch):

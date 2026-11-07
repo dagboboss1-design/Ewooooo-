@@ -4,18 +4,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    market_data_provider: str = "twelve_data"
+    twelve_data_api_key: str = ""
+    twelve_data_symbols: str = (
+        "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,EUR/GBP,AUD/NZD,"
+        "XAU/USD,XAG/USD,BTC/USD"
+    )
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
     oanda_environment: str = "practice"
     oanda_practice_token: str = ""
     oanda_live_token: str = ""
     oanda_account_id: str = ""
-    oanda_instruments: str = (
-        "EUR_USD,GBP_USD,USD_JPY,AUD_USD,USD_CAD,EUR_GBP,AUD_NZD,"
-        "XAU_USD,XAG_USD,BTC_USD"
-    )
+    oanda_instruments: str = "EUR_USD,GBP_USD,USD_JPY,AUD_USD,USD_CAD,EUR_GBP,AUD_NZD,XAU_USD,XAG_USD,BTC_USD"
     oanda_granularity: str = "H1"
     oanda_price_component: str = "MBA"
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4.1-mini"
     data_dir: str = "./data"
     database_url: str = "sqlite:///./data/metadata.db"
     biquote_calendar_url: str = "https://biquote.io/api/calendar/upcoming"
@@ -30,5 +33,7 @@ class Settings(BaseSettings):
         super().__init__(**data)
         if self.oanda_environment not in {"practice", "live"}:
             raise ValueError("OANDA_ENVIRONMENT must be practice or live")
+        if self.market_data_provider not in {"twelve_data", "oanda"}:
+            raise ValueError("MARKET_DATA_PROVIDER must be twelve_data or oanda")
         if self.live_trading:
             raise ValueError("Live order execution is not implemented in Phase 4")
