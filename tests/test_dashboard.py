@@ -11,6 +11,8 @@ def test_dashboard_serves_mobile_page():
     assert "Ewooooo" in response.text
     assert 'name="viewport"' in response.text
     assert "AI Trading Assistant" in response.text
+    assert 'id="candles"' in response.text
+    assert 'id="chart-symbol"' in response.text
 
 
 def test_watchlist_contains_requested_assets_and_timeframes():
@@ -38,6 +40,11 @@ def test_candle_endpoint_requires_key(monkeypatch):
     ))
     response = client.get("/api/market/candles?symbol=EUR/USD&timeframe=M15")
     assert response.status_code == 503
+
+
+def test_candle_endpoint_rejects_unknown_market(monkeypatch):
+    response = client.get("/api/market/candles?symbol=INVALID&timeframe=M15")
+    assert response.status_code == 400
 
 
 def test_ai_chat_requires_private_server_key(monkeypatch):
