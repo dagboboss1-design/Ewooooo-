@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import httpx
 import pandas as pd
+
 
 class OandaClient:
     BASE_URLS = {
@@ -17,14 +19,46 @@ class OandaClient:
         self.token = token
         self.timeout = timeout
 
+    @property
+    def headers(self):
+        return {"Authorization": f"Bearer {self.token}", "Accept-Datetime-Format": "RFC3339"}
+
+    async def prices(self, account_id: str, instrument: str) -> dict:
+        """Fetch one account-authorized current quote; never submit orders."""
+        if not account_id:
+            raise ValueError("OANDA account ID is required for pricing")
+        url = f"{self.base_url}/v3/accounts/{account_id}/pricing"
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(
+                url, headers=self.headers, params={"instruments": instrument}
+            )
+            response.raise_for_status()
+        prices = response.json().get("prices", [])
+        if not prices:
+            raise LookupError(f"No pricing returned for {instrument}")
+        item = prices[0]
+        bids, asks = item.get("bids") or [], item.get("asks") or []
+        bid = float(bids[0]["price"]) if bids else None
+        ask = float(asks[0]["price"]) if asks else None
+        return {
+            "symbol": instrument,
+            "bid": bid,
+            "ask": ask,
+            "mid": (bid + ask) / 2 if bid is not None and ask is not None else None,
+            "spread": ask - bid if bid is not None and ask is not None else None,
+            "time": item.get("time"),
+            "tradeable": item.get("tradeable", False),
+            "status": "live" if bid is not None and ask is not None else "no_quote",
+            "source": "oanda",
+        }
+
     async def candles(self, instrument: str, granularity="H1", count=500, price="MBA") -> pd.DataFrame:
         if count < 1 or count > 5000:
             raise ValueError("count must be between 1 and 5000")
         url = f"{self.base_url}/v3/instruments/{instrument}/candles"
-        headers = {"Authorization": f"Bearer {self.token}", "Accept-Datetime-Format": "RFC3339"}
         params = {"granularity": granularity, "count": count, "price": price}
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(url, headers=headers, params=params)
+            response = await client.get(url, headers=self.headers, params=params)
             response.raise_for_status()
         payload = response.json()
         rows = []

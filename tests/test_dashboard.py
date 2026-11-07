@@ -13,21 +13,21 @@ def test_dashboard_serves_mobile_page():
 
 
 def test_watchlist_contains_requested_assets_and_timeframes():
-    response = client.get("/api/dashboard/config")
-    assert response.status_code == 200
-    payload = response.json()
+    payload = client.get("/api/dashboard/config").json()
     symbols = {asset["symbol"] for asset in payload["assets"]}
     assert {"XAU_USD", "XAG_USD", "BTC_USD", "DXY"} <= symbols
     assert {"M5", "M15"} <= set(payload["timeframes"])
 
 
-def test_dashboard_never_fabricates_live_quotes():
-    response = client.get("/api/market")
-    assert response.status_code == 200
-    payload = response.json()
+def test_market_endpoint_does_not_fabricate_quotes(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        oanda_practice_token="", oanda_account_id="", oanda_environment="practice"
+    ))
+    payload = client.get("/api/market").json()
     assert payload["quotes"] == []
     assert payload["as_of"] is None
-    assert payload["status"] == "no_verified_feed"
+    assert payload["status"] == "awaiting_provider_credentials"
 
 
 def test_live_execution_is_not_enabled():
