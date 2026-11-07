@@ -129,3 +129,10 @@ def test_ai_chat_rejects_unsupported_timeframe():
     response = client.post("/api/ai/chat", json={"message":"Analyse", "timeframe":"W1"})
     assert response.status_code == 422
 
+
+
+def test_chat_frontend_displays_daily_bias_metadata():
+    from pathlib import Path
+    script = Path("forex_quant/dashboard/static/app.js").read_text()
+    assert "D1 BIAS:" in script
+    assert "market_data_status" in script
