@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 
 from forex_quant.config import Settings
 from forex_quant.providers.oanda import OandaClient
