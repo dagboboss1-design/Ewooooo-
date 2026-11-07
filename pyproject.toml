@@ -28,6 +28,6 @@ dev = ["pytest>=8,<9", "pytest-asyncio>=0.23,<2", "respx>=0.21,<1"]
 where = ["."]
 include = ["forex_quant*"]
 
-[tool.pytest.ini_options]
+[tool.setuptools.package-data]\n"forex_quant.dashboard" = ["static/*"]\n\n[tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
