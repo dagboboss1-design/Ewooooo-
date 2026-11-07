@@ -96,3 +96,36 @@ def test_daily_timeframe_maps_to_provider_interval(monkeypatch):
     assert response.status_code == 200
     assert response.json()["timeframe"] == "D1"
     assert response.json()["candles"][0]["close"] == 1.05
+
+def test_ai_chat_uses_daily_and_selected_timeframe_candles(monkeypatch):
+    import pandas as pd
+    from forex_quant.dashboard import app as dashboard_module
+    class FakeProvider:
+        def __init__(self, key): pass
+        async def candles(self, symbol, interval, outputsize):
+            assert interval in {"1day", "15min"}
+            return pd.DataFrame([{"time":f"2026-10-{i:02d}","open":1.0+i*.001,"high":1.01+i*.001,"low":.99+i*.001,"close":1.005+i*.001,"volume":10} for i in range(1, 41)])
+    captured = {}
+    class FakeResponse:
+        def raise_for_status(self): pass
+        def json(self): return {"output_text":"WAIT. Daily context is bullish."}
+    class FakeAsyncClient:
+        def __init__(self, timeout): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, headers, json):
+            captured.update(json)
+            return FakeResponse()
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(openai_api_key="test-openai", twelve_data_api_key="test-data", market_data_provider="twelve_data"))
+    monkeypatch.setattr(dashboard_module, "TwelveDataClient", FakeProvider)
+    monkeypatch.setattr(dashboard_module.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post("/api/ai/chat", json={"message":"Analyse EUR/USD", "symbol":"EUR/USD", "timeframe":"M15"})
+    assert response.status_code == 200
+    assert response.json()["daily_bias"] in {"BULLISH", "BEARISH", "NEUTRAL"}
+    assert "daily_bias" in captured["instructions"] and "entry_candles" in captured["instructions"]
+
+
+def test_ai_chat_rejects_unsupported_timeframe():
+    response = client.post("/api/ai/chat", json={"message":"Analyse", "timeframe":"W1"})
+    assert response.status_code == 422
+

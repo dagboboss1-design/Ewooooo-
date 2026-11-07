@@ -56,6 +56,8 @@ class JournalUpdate(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=6000)
     chart_image: str | None = Field(default=None, max_length=5_500_000)
+    symbol: str = Field(default="EUR/USD", min_length=2, max_length=20)
+    timeframe: str = Field(default="M15", pattern="^(M5|M15|M30|H1|H4|D1)$")
 
 
 def get_settings() -> Settings:
@@ -212,7 +214,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
     answer = data.get("output_text") or "\n".join(item.get("text", "") for output in data.get("output", []) for item in output.get("content", []) if item.get("type") == "output_text").strip()
     if not answer:
         raise HTTPException(status_code=502, detail="AI service returned no text.")
-    return {"answer": answer, "model": settings.openai_model, "market_data_status": market_context.get("status"), "chart_received": bool(image_url)}
+    return {"answer": answer, "model": settings.openai_model, "market_data_status": candle_context.get("status"), "daily_bias": candle_context.get("daily_bias"), "symbol": payload.symbol, "timeframe": payload.timeframe, "chart_received": bool(image_url)}
 
 @app.get("/api/journal")
 async def journal_list():
