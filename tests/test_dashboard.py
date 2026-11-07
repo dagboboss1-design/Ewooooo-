@@ -58,3 +58,25 @@ def test_ai_chat_requires_private_server_key(monkeypatch):
 def test_live_execution_is_not_enabled():
     payload = client.get("/api/dashboard/status").json()
     assert payload["execution_enabled"] is False
+
+
+
+def test_journal_create_close_and_summary(tmp_path, monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    db_url = "sqlite:///" + str(tmp_path / "journal.db")
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(database_url=db_url))
+    created = client.post("/api/journal", json={"symbol":"EUR/USD","side":"BUY","timeframe":"M15","setup_text":"BUY EUR/USD"})
+    assert created.status_code == 201
+    trade = created.json()["trade"]
+    assert trade["status"] == "open"
+    assert "No broker order was placed" in created.json()["message"]
+    closed = client.patch("/api/journal/" + trade["trade_id"], json={"exit_price":1.09,"pnl":12.5,"status":"closed"})
+    assert closed.status_code == 200
+    summary = client.get("/api/journal").json()
+    assert summary["count"] == 1 and summary["closed_count"] == 1
+    assert summary["realized_pnl"] == 12.5
+
+
+def test_journal_rejects_invalid_side():
+    response = client.post("/api/journal", json={"symbol":"EUR/USD","side":"HOLD","setup_text":"test"})
+    assert response.status_code == 400

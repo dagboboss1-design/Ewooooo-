@@ -9,11 +9,12 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from forex_quant.config import Settings
 from forex_quant.providers.oanda import OandaClient
 from forex_quant.providers.twelve_data import TwelveDataClient
+from forex_quant.trade_journal import create_trade, list_trades, update_trade
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = [
@@ -34,6 +35,23 @@ INTERVALS = {"M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H4": "4h
 app = FastAPI(title="Ewooooo Forex Quant Signal System", version="0.4.3")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
+
+class JournalCreate(BaseModel):
+    symbol: str = Field(min_length=2, max_length=20)
+    side: str
+    timeframe: str = Field(default="—", max_length=8)
+    entry: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    setup_text: str = Field(min_length=1, max_length=10000)
+    source: str = Field(default="ai", pattern="^(ai|manual)$")
+
+class JournalUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exit_price: float | None = None
+    pnl: float | None = None
+    status: str | None = Field(default=None, pattern="^(open|closed|cancelled)$")
+    notes: str | None = Field(default=None, max_length=4000)
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=6000)
@@ -196,6 +214,37 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="AI service returned no text.")
     return {"answer": answer, "model": settings.openai_model, "market_data_status": market_context.get("status"), "chart_received": bool(image_url)}
 
+@app.get("/api/journal")
+async def journal_list():
+    trades = list_trades(get_settings().database_url)
+    closed = [t for t in trades if t["status"] == "closed"]
+    return {"trades": trades, "count": len(trades), "closed_count": len(closed),
+            "realized_pnl": sum((t["pnl"] or 0) for t in closed)}
+
+@app.post("/api/journal", status_code=201)
+async def journal_create(payload: JournalCreate):
+    symbol = payload.symbol.strip().upper()
+    if symbol not in {a["symbol"] for a in ASSETS}:
+        raise HTTPException(status_code=400, detail="Unsupported journal instrument.")
+    side = payload.side.upper()
+    if side not in {"BUY", "SELL"}:
+        raise HTTPException(status_code=400, detail="Side must be BUY or SELL.")
+    values = payload.model_dump()
+    values.update(symbol=symbol, side=side, status="open", exit_price=None, pnl=None, notes="")
+    trade = create_trade(get_settings().database_url, values)
+    return {"trade": trade, "message": "Saved to paper journal. No broker order was placed."}
+
+@app.patch("/api/journal/{trade_id}")
+async def journal_update(trade_id: str, payload: JournalUpdate):
+    values = payload.model_dump(exclude_unset=True)
+    if not values:
+        raise HTTPException(status_code=400, detail="No journal changes supplied.")
+    if values.get("exit_price") is not None and values["exit_price"] <= 0:
+        raise HTTPException(status_code=400, detail="Exit price must be positive.")
+    trade = update_trade(get_settings().database_url, trade_id, values)
+    if trade is None:
+        raise HTTPException(status_code=404, detail="Journal trade not found.")
+    return {"trade": trade}
 
 @app.get("/api/signals")
 async def signals() -> dict[str, Any]:
