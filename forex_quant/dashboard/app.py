@@ -179,11 +179,46 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
             image_url = payload.chart_image
         except (ValueError, binascii.Error):
             raise HTTPException(status_code=400, detail="Upload a valid PNG, JPEG or WebP chart image under 4 MB.")
+    if payload.symbol not in {a["symbol"] for a in ASSETS if a["symbol"] != "DXY"}:
+        raise HTTPException(status_code=400, detail="Unsupported analysis instrument.")
+    candle_context = {"symbol": payload.symbol, "selected_timeframe": payload.timeframe, "provider": settings.market_data_provider, "daily_bias": "UNAVAILABLE", "daily_candles": [], "entry_candles": []}
+    async def get_analysis_candles(tf: str, count: int):
+        if settings.market_data_provider == "twelve_data":
+            if not settings.twelve_data_api_key:
+                raise LookupError("Twelve Data API key is not configured.")
+            return await TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count)
+        token = selected_oanda_token(settings)
+        if not token or not settings.oanda_account_id:
+            raise LookupError("OANDA credentials are not configured.")
+        granularity = "D" if tf == "D1" else tf
+        return await OandaClient(token, settings.oanda_environment).candles(payload.symbol.replace("/", "_"), granularity, count)
     try:
-        market_context = await market()
-    except Exception:
-        market_context = {"status": "unavailable", "quotes": [], "unavailable": ["Market context could not be retrieved."]}
-    context_text = "Verified market quotes: " + (str(market_context.get("quotes")) if market_context.get("quotes") else "No verified live quotes. Do not invent prices.") + ". Provider status: " + str(market_context.get("status")) + "."
+        daily = await get_analysis_candles("D1", 80)
+        daily_rows = daily.to_dict(orient="records")
+        completed_daily = daily_rows[:-1] if settings.market_data_provider == "twelve_data" else daily_rows
+        closes = [float(row["close"]) for row in completed_daily if row.get("close") is not None]
+        if len(closes) >= 25:
+            alpha = 2 / 21
+            ema = closes[0]
+            ema_values = []
+            for close in closes:
+                ema = close * alpha + ema * (1 - alpha)
+                ema_values.append(ema)
+            latest, ema20 = closes[-1], ema_values[-1]
+            prior_ema = ema_values[max(0, len(ema_values) - 6)]
+            bias = "BULLISH" if latest > ema20 and ema20 > prior_ema else "BEARISH" if latest < ema20 and ema20 < prior_ema else "NEUTRAL"
+            candle_context.update(daily_bias=bias, daily_last_completed_close=latest, daily_ema20=ema20, daily_completed_bars=len(closes))
+        candle_context["daily_candles"] = completed_daily[-60:]
+        if payload.timeframe != "D1":
+            entry = await get_analysis_candles(payload.timeframe, 100)
+            candle_context["entry_candles"] = entry.to_dict(orient="records")[-80:]
+        else:
+            candle_context["entry_candles"] = completed_daily[-80:]
+        candle_context["status"] = "verified_candles_loaded"
+    except (httpx.HTTPError, LookupError, ValueError, KeyError) as exc:
+        candle_context["status"] = "unavailable"
+        candle_context["error"] = str(exc)[:200]
+    context_text = "Verified OHLC candle context: " + str(candle_context) + ". Use only observed values. If unavailable, state that clearly and never invent prices or bias. D1 bias is contextual, not a guaranteed direction. Explain conflicts between D1 and the selected timeframe; prefer WAIT when evidence conflicts."
     instructions = (
         "You are Ewooooo AI, a specialist trading education and market-analysis assistant. "
         "Answer broad questions about forex, metals, crypto, indices, technical/fundamental analysis, "
