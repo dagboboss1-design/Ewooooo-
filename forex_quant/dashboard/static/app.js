@@ -31,3 +31,41 @@ const el=document.getElementById('journal-analytics');if(!el)return;
 el.innerHTML='<div class="metric"><small>Win rate</small><b>'+metric(a.win_rate_pct,'%')+'</b></div><div class="metric"><small>Average R</small><b>'+metric(a.average_r,'R')+'</b></div><div class="metric"><small>Profit factor</small><b>'+metric(a.profit_factor_r)+'</b></div><div class="metric"><small>Max drawdown</small><b>'+metric(a.max_drawdown_r,'R')+'</b></div><div class="metric"><small>Open trades</small><b>'+Number(a.open_trades||0)+'</b></div><div class="metric"><small>Skipped setups</small><b>'+Number(a.skipped_setups||0)+'</b></div>';
 const tf=document.getElementById('journal-timeframes');if(tf){const rows=Object.entries(a.by_timeframe||{});tf.innerHTML=rows.length?'<b>Performance by timeframe</b>'+rows.map(([name,s])=>'<div class="timeframe-row"><span>'+safe(name)+'</span><span>'+s.trades+' scored</span><span>Win '+metric(s.win_rate_pct,'%')+'</span><span>Avg '+metric(s.average_r,'R')+'</span></div>').join(''):'<small>Close trades with entry, stop and exit prices to build timeframe statistics.</small>';}
 }
+
+
+// Interactive chart crosshair: inspect the exact OHLC values of each candle.
+(function enableCandleInspection(){
+  const canvas=document.getElementById('candles');
+  const status=document.getElementById('chart-status');
+  if(!canvas||!status)return;
+  let baseStatus=status.textContent;
+  const redraw=()=>{if(window.lastCandleRows&&window.lastCandleRows.length)drawCandles(window.lastCandleRows);};
+  canvas.addEventListener('pointermove',event=>{
+    const rows=window.lastCandleRows;
+    if(!rows||!rows.length)return;
+    const rect=canvas.getBoundingClientRect();
+    const pad={l:8,r:66};
+    const usable=Math.max(1,rect.width-pad.l-pad.r);
+    const x=Math.max(0,Math.min(usable-1,event.clientX-rect.left-pad.l));
+    const index=Math.max(0,Math.min(rows.length-1,Math.floor(x/(usable/rows.length))));
+    const candle=rows[index];
+    redraw();
+    const ctx=canvas.getContext('2d');
+    const dpr=window.devicePixelRatio||1;
+    const px=pad.l+(index+.5)*(usable/rows.length);
+    ctx.save();
+    ctx.strokeStyle='rgba(151,178,208,.65)';
+    ctx.lineWidth=1;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(px,8);ctx.lineTo(px,rect.height-24);ctx.stroke();
+    ctx.restore();
+    status.textContent=String(candle.time)+' · O '+candle.open+' H '+candle.high+' L '+candle.low+' C '+candle.close;
+  });
+  canvas.addEventListener('pointerleave',()=>{
+    baseStatus=document.getElementById('chart-status').textContent;
+    if(window.lastCandleRows&&window.lastCandleRows.length)redraw();
+    status.textContent=baseStatus.includes(' · O ')?'OHLC candles · verified provider data':baseStatus;
+  });
+  const observer=new MutationObserver(()=>{const value=status.textContent;if(!value.includes(' · O '))baseStatus=value;});
+  observer.observe(status,{childList:true,characterData:true,subtree:true});
+})();
