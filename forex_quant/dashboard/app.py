@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
 from math import isfinite
 import os
 import secrets
+import time
 from pathlib import Path
 from typing import Any
 
@@ -233,6 +235,23 @@ async def dashboard_status() -> dict[str, Any]:
     }
 
 
+_PROVIDER_CACHE: dict[tuple[Any, ...], tuple[float, Any]] = {}
+_PROVIDER_CACHE_LOCK = asyncio.Lock()
+
+
+async def _cached_provider_call(key: tuple[Any, ...], ttl_seconds: int, loader):
+    """Reuse provider data inside a TTL to respect strict free-tier request limits."""
+    now = time.monotonic()
+    async with _PROVIDER_CACHE_LOCK:
+        cached = _PROVIDER_CACHE.get(key)
+        if cached is not None and now - cached[0] < ttl_seconds:
+            return cached[1]
+    value = await loader()
+    async with _PROVIDER_CACHE_LOCK:
+        _PROVIDER_CACHE[key] = (time.monotonic(), value)
+    return value
+
+
 @app.get("/api/market")
 async def market() -> dict[str, Any]:
     settings = get_settings()
@@ -246,7 +265,7 @@ async def market() -> dict[str, Any]:
                 unavailable.append({"symbol": "DXY", "reason": "DXY index feed is not configured; it is not being approximated."})
                 continue
             try:
-                quote = await client.quote(asset["symbol"])
+                quote = await _cached_provider_call(("quote", "twelve_data", asset["symbol"]), 1800, lambda: client.quote(asset["symbol"]))
                 quote["label"] = asset["label"]
                 quotes.append(quote)
             except (httpx.HTTPError, LookupError, ValueError) as exc:
@@ -264,7 +283,7 @@ async def market() -> dict[str, Any]:
             continue
         instrument = asset["symbol"].replace("/", "_")
         try:
-            quote = await client.prices(settings.oanda_account_id, instrument)
+            quote = await _cached_provider_call(("quote", "oanda", instrument), 1800, lambda: client.prices(settings.oanda_account_id, instrument))
             quote["label"] = asset["label"]
             quotes.append(quote)
         except (httpx.HTTPError, LookupError, ValueError) as exc:
@@ -285,12 +304,12 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
         if settings.market_data_provider == "twelve_data":
             if not settings.twelve_data_api_key:
                 raise HTTPException(status_code=503, detail="TWELVE_DATA_API_KEY is not configured.")
-            frame = await TwelveDataClient(settings.twelve_data_api_key).candles(symbol, INTERVALS[timeframe], outputsize)
+            frame = await _cached_provider_call(("candles", "twelve_data", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(symbol, INTERVALS[timeframe], outputsize))
         else:
             token = selected_oanda_token(settings)
             if not token or not settings.oanda_account_id:
                 raise HTTPException(status_code=503, detail="OANDA credentials are not configured.")
-            frame = await OandaClient(token, settings.oanda_environment).candles(symbol.replace("/", "_"), "D" if timeframe == "D1" else timeframe, outputsize)
+            frame = await _cached_provider_call(("candles", "oanda", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: OandaClient(token, settings.oanda_environment).candles(symbol.replace("/", "_"), "D" if timeframe == "D1" else timeframe, outputsize))
     except HTTPException:
         raise
     except (httpx.HTTPError, LookupError, ValueError) as exc:
@@ -323,12 +342,12 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         if settings.market_data_provider == "twelve_data":
             if not settings.twelve_data_api_key:
                 raise LookupError("Twelve Data API key is not configured.")
-            return await TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count)
+            return await _cached_provider_call(("candles", "twelve_data", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count))
         token = selected_oanda_token(settings)
         if not token or not settings.oanda_account_id:
             raise LookupError("OANDA credentials are not configured.")
         granularity = "D" if tf == "D1" else tf
-        return await OandaClient(token, settings.oanda_environment).candles(payload.symbol.replace("/", "_"), granularity, count)
+        return await _cached_provider_call(("candles", "oanda", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: OandaClient(token, settings.oanda_environment).candles(payload.symbol.replace("/", "_"), granularity, count))
     try:
         daily = await get_analysis_candles("D1", 80)
         daily_rows = daily.to_dict(orient="records")
