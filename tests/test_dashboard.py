@@ -349,7 +349,9 @@ def test_ai_chat_offline_mode_does_not_claim_to_analyse_chart(monkeypatch):
 
 
 def test_news_spike_check_enforces_spread_guard():
-    response = client.post("/api/news/spike-check", json={"ticks":[100+i*0.01 for i in range(32)],"spread":2.0,"maximum_spread":1.0})
+    ticks = [100+i*0.01 for i in range(32)]
+    ticks[-1] = ticks[-2] * 1.01
+    response = client.post("/api/news/spike-check", json={"ticks":ticks,"spread":2.0,"maximum_spread":1.0})
     assert response.status_code == 200
     assert response.json()["spike_detected"] is True
     assert response.json()["alert_eligible"] is False
@@ -377,3 +379,54 @@ def test_calendar_history_route_returns_provider_records(monkeypatch):
 def test_news_spike_check_rejects_nonfinite_tick_values():
     response = client.post('/api/news/spike-check', json={'ticks':[100, 100.1, float('nan')], 'spread':0.5, 'maximum_spread':1.0})
     assert response.status_code == 422
+
+
+def test_ai_chat_prefers_cloudflare_worker_and_passes_market_context(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    captured = {}
+    class FakeResponse:
+        def raise_for_status(self): pass
+        def json(self): return {"answer":"Claude response with current sources","model":"claude-sonnet-current","web_search_used":True,"citations":[{"url":"https://example.com"}]}
+    class FakeAsyncClient:
+        def __init__(self, timeout): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, json, **kwargs):
+            captured.update(json)
+            assert url == "https://worker.example/ai"
+            return FakeResponse()
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        cloudflare_worker_url="https://worker.example/ai", openai_api_key="", pollinations_api_key=""
+    ))
+    monkeypatch.setattr(dashboard_module.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post("/api/ai/chat", json={"message":"Analyse gold","symbol":"XAU/USD","timeframe":"M15"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "cloudflare_worker"
+    assert payload["web_search_used"] is True
+    assert captured["symbol"] == "XAU/USD"
+    assert "daily_bias" in captured["market_context"]
+
+
+def test_ai_chat_uses_pollinations_when_worker_is_not_configured(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    class FakeResponse:
+        def raise_for_status(self): pass
+        def json(self): return {"choices":[{"message":{"content":"Pollinations backup answer"}}]}
+    class FakeAsyncClient:
+        def __init__(self, timeout): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, headers, json):
+            assert url == "https://gen.pollinations.ai/v1/chat/completions"
+            assert headers["Authorization"] == "Bearer test-pollinations"
+            assert json["model"] == "anthropic/claude-sonnet-4.6"
+            return FakeResponse()
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        cloudflare_worker_url="", pollinations_api_key="test-pollinations", openai_api_key=""
+    ))
+    monkeypatch.setattr(dashboard_module.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post("/api/ai/chat", json={"message":"Explain RSI"})
+    assert response.status_code == 200
+    assert response.json()["provider"] == "pollinations"
+    assert response.json()["web_search_used"] is False
