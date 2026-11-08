@@ -545,3 +545,16 @@ def test_paper_partial_close_requires_explicit_contract_specs(tmp_path, monkeypa
     })
     assert response.status_code == 409
     assert "Configure the paper account" in response.json()["detail"]
+
+
+def test_paper_account_dashboard_has_manual_order_equity_and_reconciliation_controls():
+    from pathlib import Path
+    page = Path("forex_quant/dashboard/static/index.html").read_text()
+    script = Path("forex_quant/dashboard/static/app.js").read_text()
+    for element_id in ("paper-balance", "paper-currency", "paper-contracts",
+                       "submit-paper-order", "paper-equity", "refresh-paper-equity",
+                       "run-paper-reconcile", "paper-positions"):
+        assert f'id="{element_id}"' in page
+    assert "fetch('/api/paper/orders'" in script
+    assert "fetch('/api/paper/account/snapshot'" in script
+    assert "fetch('/api/paper/reconcile'" in script
