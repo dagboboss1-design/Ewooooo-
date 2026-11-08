@@ -372,3 +372,8 @@ def test_calendar_history_route_returns_provider_records(monkeypatch):
     monkeypatch.setattr(dashboard_module, "BiquoteCalendarClient", FakeCalendar)
     response = client.get("/api/news/events/evt-1/history")
     assert response.status_code == 200 and response.json()["observations"] == 1
+
+
+def test_news_spike_check_rejects_nonfinite_tick_values():
+    response = client.post('/api/news/spike-check', json={'ticks':[100, 100.1, float('nan')], 'spread':0.5, 'maximum_spread':1.0})
+    assert response.status_code == 422
