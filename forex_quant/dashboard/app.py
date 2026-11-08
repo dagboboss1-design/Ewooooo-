@@ -170,9 +170,10 @@ def offline_trading_answer(message: str, symbol: str, timeframe: str, chart_atta
         answer = ("Hello! I'm Ewooooo's offline trading helper. Ask about forex basics, indicators, trends, "
                   "stop-losses, position sizing or risk management.")
     else:
-        answer = ("OFFLINE GUIDE\\nI can answer common educational questions about forex, indicators, market "
-                  "structure, trade planning and risk management. This is a limited built-in guide, not a "
-                  "general-purpose AI model. Add the OpenAI key privately for broader conversational answers.")
+        answer = ("AI PROVIDERS UNAVAILABLE\\nThe connected AI services are temporarily unavailable or rate-limited. "
+                  "I can still answer educational questions about forex, indicators, market structure, "
+                  "trade planning and risk management. This built-in guide cannot inspect live charts or "
+                  "claim live market analysis.")
     if chart_attached:
         answer += ("\\n\\nCHART NOTE: The image was received, but offline mode cannot perform visual chart "
                    "recognition. I will not invent levels or claim to have analysed it.")
@@ -230,8 +231,9 @@ async def dashboard_status() -> dict[str, Any]:
         "market_data_provider": settings.market_data_provider,
         "market_data_connected": connected,
         "ai_chat_configured": bool(settings.cloudflare_worker_url or settings.pollinations_api_key or settings.openai_api_key),
-        "ai_provider_priority": ["cloudflare_worker", "pollinations", "openai_legacy", "offline"],
-        "ai_provider_configured": ("cloudflare_worker" if settings.cloudflare_worker_url else "pollinations" if settings.pollinations_api_key else "openai_legacy" if settings.openai_api_key else "offline"),
+        "ai_provider_priority": ["cloudflare_worker", "openai", "pollinations", "offline"],
+        "ai_provider_configured": ("cloudflare_worker" if settings.cloudflare_worker_url else "openai" if settings.openai_api_key else "pollinations" if settings.pollinations_api_key else "offline"),
+        "ai_providers": {"cloudflare_worker": bool(settings.cloudflare_worker_url), "openai": bool(settings.openai_api_key), "pollinations": bool(settings.pollinations_api_key)},
         "signal_engine_connected": False,
         "news_feed_connected": False,
         "execution_enabled": False,
@@ -428,7 +430,23 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             pass
 
-    # Backup: Pollinations' OpenAI-compatible Chat Completions API.
+    # Second provider: OpenAI. A 429 or other provider failure continues to the next fallback.
+    if settings.openai_api_key:
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {settings.openai_api_key}"}, json={"model": settings.openai_model, "instructions": instructions, "input": [{"role": "user", "content": content}], "max_output_tokens": 1200})
+            response.raise_for_status()
+            data = response.json()
+            answer = data.get("output_text") or "\\n".join(item.get("text", "") for output in data.get("output", []) for item in output.get("content", []) if item.get("type") == "output_text").strip()
+            if answer:
+                return {"answer": answer, "model": settings.openai_model, "assistant_mode": "openai", "provider": "openai",
+                    "web_search_used": False, "citations": [], "market_data_status": candle_context.get("status"),
+                    "daily_bias": candle_context.get("daily_bias"), "symbol": payload.symbol, "timeframe": payload.timeframe,
+                    "chart_received": bool(image_url), "execution_enabled": False}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            pass
+
+    # Third provider: Pollinations' OpenAI-compatible Chat Completions API.
     if settings.pollinations_api_key:
         try:
             user_content = message + "\\n\\nVerified market context: " + str(candle_context)
@@ -455,33 +473,15 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             pass
 
-    if not settings.openai_api_key:
-        answer = offline_trading_answer(message, payload.symbol, payload.timeframe, bool(payload.chart_image))
-        return {"answer":answer,"model":"ewo-offline-guide","assistant_mode":"offline",
-            "provider":"offline","web_search_used":False,"citations":[],
-            "market_data_status":candle_context.get("status","not_connected"),
-            "daily_bias":candle_context.get("daily_bias","UNAVAILABLE"),
-            "symbol":payload.symbol,"timeframe":payload.timeframe,
-            "chart_received":bool(payload.chart_image),
-            "chart_analysis":"not_supported_offline" if payload.chart_image else None,
-            "execution_enabled":False}
-    try:
-        async with httpx.AsyncClient(timeout=45) as client:
-            response = await client.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {settings.openai_api_key}"}, json={"model": settings.openai_model, "instructions": instructions, "input": [{"role": "user", "content": content}], "max_output_tokens": 1200})
-        response.raise_for_status()
-        data = response.json()
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 401:
-            raise HTTPException(status_code=502, detail="The server's AI credential was rejected.")
-        if exc.response.status_code == 429:
-            raise HTTPException(status_code=503, detail="AI service rate limit or API quota reached.")
-        raise HTTPException(status_code=502, detail="AI service returned an error.")
-    except (httpx.HTTPError, ValueError):
-        raise HTTPException(status_code=502, detail="Could not reach the AI service.")
-    answer = data.get("output_text") or "\n".join(item.get("text", "") for output in data.get("output", []) for item in output.get("content", []) if item.get("type") == "output_text").strip()
-    if not answer:
-        raise HTTPException(status_code=502, detail="AI service returned no text.")
-    return {"answer": answer, "model": settings.openai_model, "assistant_mode": "full_ai", "market_data_status": candle_context.get("status"), "daily_bias": candle_context.get("daily_bias"), "symbol": payload.symbol, "timeframe": payload.timeframe, "chart_received": bool(image_url)}
+    answer = offline_trading_answer(message, payload.symbol, payload.timeframe, bool(payload.chart_image))
+    return {"answer": answer, "model": "ewo-offline-guide", "assistant_mode": "offline",
+        "provider": "offline", "web_search_used": False, "citations": [],
+        "market_data_status": candle_context.get("status", "not_connected"),
+        "daily_bias": candle_context.get("daily_bias", "UNAVAILABLE"),
+        "symbol": payload.symbol, "timeframe": payload.timeframe,
+        "chart_received": bool(payload.chart_image),
+        "chart_analysis": "not_supported_offline" if payload.chart_image else None,
+        "execution_enabled": False}
 
 @app.get("/api/journal")
 async def journal_list():
