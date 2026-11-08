@@ -101,3 +101,21 @@ async def test_telegram_api_ok_false_is_retried_and_reported():
         result = await dispatcher.dispatch(SIGNAL)
     assert result.telegram_sent
     assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_persistent_dedupe_survives_dispatcher_restart(tmp_path):
+    route = respx.post("https://api.telegram.org/botTEST_TOKEN/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True}))
+    database_url = f"sqlite:///{tmp_path / 'alerts.db'}"
+    async with httpx.AsyncClient() as client:
+        first_dispatcher = AlertDispatcher(telegram_bot_token="TEST_TOKEN", telegram_chat_id="123",
+            telegram_min_interval_seconds=0, database_url=database_url, client=client)
+        first = await first_dispatcher.dispatch(SIGNAL)
+        second_dispatcher = AlertDispatcher(telegram_bot_token="TEST_TOKEN", telegram_chat_id="123",
+            telegram_min_interval_seconds=0, database_url=database_url, client=client)
+        second = await second_dispatcher.dispatch(SIGNAL)
+    assert first.telegram_sent
+    assert second.duplicate
+    assert route.call_count == 1
