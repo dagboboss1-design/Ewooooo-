@@ -12,6 +12,10 @@ Parquet snapshots, and SQLAlchemy snapshot metadata.
 - `LIVE_TRADING=false` is retained as a fail-closed deployment setting.
 - Never commit `.env`, tokens, account IDs, or downloaded private data.
 
+## Hosted deployment
+
+See [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md) for the password-protected Railway deployment checklist. Use the development branch and keep live trading disabled.
+
 ## Setup
 
 ```bash
