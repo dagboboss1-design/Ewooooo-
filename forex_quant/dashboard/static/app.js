@@ -156,7 +156,7 @@ async function loadPaperAccount(){
    status.textContent='Paper account configured · '+a.currency+' · simulation only.';
   }else status.textContent='Not configured. Enter your own account values; no balance or contract size is assumed.';
   const box=document.getElementById('paper-positions');
-  box.innerHTML=(positions.positions||[]).length?(positions.positions||[]).map(p=>'<article class="journal-trade"><b>'+safe(p.symbol)+' · '+safe(p.side)+'</b><small>Entry '+p.entry+' · Remaining quantity '+(JSON.parse(p.setup_text||'{}').remaining_quantity??JSON.parse(p.setup_text||'{}').quantity_units??'—')+'</small><div class="journal-close"><input type="number" step="any" min="0.00000001" placeholder="Close quantity" data-pqty><input type="number" step="any" min="0.00000001" placeholder="Exit price" data-pexit><button data-pclose="'+p.trade_id+'">Partial / full close</button></div></article>').join(''):'<small>No open paper positions.</small>';
+  box.innerHTML=(positions.positions||[]).length?(positions.positions||[]).map(p=>'<article class="journal-trade"><b>'+safe(p.symbol)+' · '+safe(p.side)+'</b><small>Entry '+p.entry+' · Remaining quantity '+(JSON.parse(p.setup_text||'{}').remaining_quantity??JSON.parse(p.setup_text||'{}').quantity_units??'—')+'</small><div class="journal-close"><input type="number" step="any" min="0.00000001" placeholder="Verified mark price" data-mark><input type="number" step="any" min="0.00000001" placeholder="Close quantity" data-pqty><input type="number" step="any" min="0.00000001" placeholder="Exit price" data-pexit><button data-pclose="'+p.trade_id+'">Partial / full close</button></div></article>').join(''):'<small>No open paper positions.</small>';
   box.querySelectorAll('[data-pclose]').forEach(button=>button.onclick=async()=>{
    const card=button.closest('.journal-trade'),quantity=Number(card.querySelector('[data-pqty]').value),exit_price=Number(card.querySelector('[data-pexit]').value);
    if(!(quantity>0&&exit_price>0)){alert('Enter a positive quantity and simulated exit price.');return;}
@@ -176,3 +176,17 @@ document.getElementById('save-paper-account')?.addEventListener('click',async()=
  }catch(e){status.textContent='Could not save paper account: '+e.message;}
 });
 loadPaperAccount();
+
+document.getElementById('refresh-paper-equity')?.addEventListener('click',async()=>{
+ const box=document.getElementById('paper-equity');
+ try{
+  const marks={};
+  document.querySelectorAll('#paper-positions [data-mark]').forEach(input=>{
+   const card=input.closest('.journal-trade'),value=Number(input.value);
+   if(value>0)marks[card.querySelector('[data-pclose]').dataset.pclose]=value;
+  });
+  const r=await fetch('/api/paper/account/snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({marks})});
+  const d=await r.json();if(!r.ok)throw Error(d.detail||'Snapshot unavailable');
+  box.textContent='Starting '+d.currency+' '+d.starting_balance.toFixed(2)+' · Realized '+d.realized_pnl.toFixed(2)+' · Unrealized '+d.unrealized_pnl.toFixed(2)+' · Fees '+d.fees.toFixed(2)+' · Equity '+d.equity.toFixed(2)+' · Open '+d.open_positions+' · PAPER ONLY';
+ }catch(e){box.textContent='Equity not calculated: '+e.message;}
+});
