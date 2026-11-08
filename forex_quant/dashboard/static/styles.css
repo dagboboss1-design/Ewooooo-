@@ -188,3 +188,12 @@ footer{color:#817b70;font-size:9px;line-height:1.5;padding:12px 4px;text-align:c
  .settings-trigger{width:34px;height:34px}
  .chart-wrap{height:230px}
 }
+
+.spike-intel-card{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0 16px;padding:15px;background:#111619;border:1px solid #5b4b2d;border-radius:12px}
+.spike-intel-cell{display:grid;gap:6px;min-width:0}
+.spike-intel-cell small{font-size:9px;letter-spacing:.12em;color:#b9a477}
+.spike-intel-cell strong{font-size:23px;line-height:1.1;color:#e8d7aa;font-variant-numeric:tabular-nums}
+.spike-intel-cell strong[data-direction="buy"]{color:#19e58a}
+.spike-intel-cell strong[data-direction="sell"]{color:#ff657a}
+.spike-intel-cell span{font-size:10px;color:#9aa5aa;line-height:1.4}
+@media(max-width:360px){.spike-intel-card{gap:8px;padding:11px}.spike-intel-cell strong{font-size:19px}}

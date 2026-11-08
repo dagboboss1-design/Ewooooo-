@@ -9,6 +9,7 @@ import os
 import secrets
 import time
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -26,6 +27,7 @@ from forex_quant.trade_journal import create_trade, list_trades, update_trade, p
 from forex_quant.signals import generate_signal, RiskPolicy
 from forex_quant.alerts import AlertDispatcher
 from forex_quant.news_spike import tick_spike_score, spread_guard, impacted_instruments, session_spike_threshold
+from forex_quant.news_spike_intelligence import build_pre_news_forecast
 from forex_quant.paper_trading import PaperOrder, PaperTradingAdapter
 from forex_quant.paper_account_store import get_paper_account, save_paper_account
 
@@ -741,6 +743,85 @@ async def news_currency_impact(currency: str) -> dict[str, Any]:
     instruments = impacted_instruments(currency)
     return {"currency": currency.upper(), "instruments": instruments, "status": "configured_mapping" if instruments else "no_mapping"}
 
+async def _build_news_spike_intelligence(events: list[dict[str, Any]], settings: Settings) -> dict[str, Any]:
+    """Prepare the next event countdown and calculate a market-bias forecast inside T-15m."""
+    now = datetime.now(timezone.utc)
+    upcoming = []
+    for event in events:
+        raw_time = event.get("event_time")
+        try:
+            event_time = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00"))
+            if event_time.tzinfo is None:
+                continue
+            event_time = event_time.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        if event_time > now:
+            upcoming.append((event_time, event))
+    if not upcoming:
+        return {"status": "no_upcoming_event", "direction": "WAIT", "seconds_until": None}
+    event_time, event = min(upcoming, key=lambda item: item[0])
+    seconds_until = max(0, int((event_time - now).total_seconds()))
+    base = {
+        "event_title": event.get("title") or "High-impact news",
+        "currency": event.get("currency") or "",
+        "event_time": event_time.isoformat(),
+        "seconds_until": seconds_until,
+        "direction": "WAIT",
+        "instrument": None,
+        "strength": "LOW",
+    }
+    if seconds_until > 900:
+        return {**base, "status": "countdown", "note": "Forecast activates 15 minutes before release."}
+
+    currency = str(event.get("currency") or "").upper()
+    if not currency:
+        return {**base, "status": "missing_currency", "note": "The calendar did not identify the event currency."}
+    affected = impacted_instruments(currency)
+    fx_symbols = [symbol for symbol in affected if "/" in symbol and symbol not in {"XAU/USD", "XAG/USD", "BTC/USD"}]
+    selected = fx_symbols[:4]
+    if currency == "USD" and "XAU/USD" not in selected:
+        selected.append("XAU/USD")
+    if not selected:
+        return {**base, "status": "no_affected_pairs", "note": "No affected currency pairs are mapped for this event."}
+
+    frames: dict[str, Any] = {}
+    errors: list[str] = []
+    for symbol in selected:
+        try:
+            if settings.market_data_provider == "twelve_data":
+                if not settings.twelve_data_api_key:
+                    raise LookupError("Twelve Data key is not configured.")
+                loader = lambda symbol=symbol: TwelveDataClient(settings.twelve_data_api_key).candles(symbol, "15min", 120)
+            else:
+                token = selected_oanda_token(settings)
+                if not token or not settings.oanda_account_id:
+                    raise LookupError("OANDA market-data credentials are not configured.")
+                loader = lambda symbol=symbol: OandaClient(token, settings.oanda_environment).candles(symbol.replace("/", "_"), "M15", 120)
+            frames[symbol] = await _cached_provider_call(
+                ("news_spike_m15", settings.market_data_provider, symbol), 900, loader
+            )
+        except (httpx.HTTPError, LookupError, ValueError) as exc:
+            errors.append(symbol + ": " + str(exc)[:100])
+
+    forecast = build_pre_news_forecast(currency, frames)
+    status = forecast.get("status", "insufficient_data")
+    note = "DXY feed is not configured; no DXY value is fabricated."
+    if errors:
+        note += " Some market feeds were unavailable."
+    return {
+        **base,
+        "status": status,
+        "direction": forecast.get("direction", "WAIT"),
+        "instrument": forecast.get("instrument"),
+        "strength": forecast.get("strength", "LOW"),
+        "confluence": forecast.get("confluence"),
+        "strategy": forecast.get("strategy"),
+        "instruments_used": forecast.get("instruments_used", []),
+        "note": note,
+    }
+
+
 @app.get("/api/news")
 async def news() -> dict[str, Any]:
     """Fetch calendar events and recent FX-related headlines; report provider failures separately."""
@@ -774,6 +855,7 @@ async def news() -> dict[str, Any]:
         "headlines_status": "live" if headlines else ("empty" if "headlines" not in errors else "unavailable"),
         "events": calendar_events,
         "headlines": headlines,
+        "spike_intelligence": await _build_news_spike_intelligence(calendar_events, settings),
         "errors": errors,
     }
 

@@ -75,7 +75,8 @@ upload.addEventListener('change',()=>{const file=upload.files&&upload.files[0];i
 async function sendMessage(){const message=input.value.trim();if(!message&&!chartData)return;addBubble((message||'Please analyse this chart.')+(chartData?' [Chart attached]':''),'user');input.value='';send.disabled=true;send.textContent='Thinking…';const pending=addBubble('Analysing your question…','assistant');try{const res=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:message||'Analyse this chart. Identify instrument/timeframe if visible, market structure, key levels and whether a setup is justified.',chart_image:chartData,symbol:state.symbol,timeframe:state.timeframe})});const data=await res.json();if(!res.ok)throw new Error(data.detail||'AI request failed');pending.textContent=data.answer;const meta=document.createElement('small');meta.className='analysis-meta';meta.textContent=String(data.assistant_mode||'unknown').replaceAll('_',' ').toUpperCase()+' · DATA: '+String(data.market_data_status||'unknown').replaceAll('_',' ').toUpperCase()+' · D1 BIAS: '+String(data.daily_bias||'UNAVAILABLE')+' · '+String(data.symbol||state.symbol)+' / '+String(data.timeframe||state.timeframe);pending.appendChild(meta);addJournalAction(pending,data.answer);if('speechSynthesis'in window){const utterance=new SpeechSynthesisUtterance(data.answer);utterance.rate=1;window.speechSynthesis.cancel();window.speechSynthesis.speak(utterance);}chartData=null;upload.value='';document.getElementById('upload-name').textContent='No chart attached';}catch(err){pending.textContent=err.message;}finally{send.disabled=false;send.textContent='Send ↗';log.scrollTop=log.scrollHeight;}}
 send.addEventListener('click',sendMessage);input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
 document.getElementById('voice-input').addEventListener('click',()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addBubble('Voice input is not supported by this browser. You can still type your question.','assistant');return;}const recognition=new SR();recognition.lang='en-US';recognition.interimResults=false;recognition.onresult=e=>{input.value+=(input.value?' ':'')+e.results[0][0].transcript;input.focus();};recognition.onerror=()=>addBubble('Microphone recognition failed. Check browser microphone permission.','assistant');recognition.start();});
-loadDashboard();loadJournal();loadNews();setInterval(loadNews,300000);
+loadDashboard();loadJournal();loadNews();
+setInterval(loadNews,60000);setInterval(loadNews,300000);
 function metric(value,suffix=''){return value===null||value===undefined?'—':Number(value).toFixed(2)+suffix;}
 function renderJournalAnalytics(a){
 const el=document.getElementById('journal-analytics');if(!el)return;
@@ -121,6 +122,36 @@ const tf=document.getElementById('journal-timeframes');if(tf){const rows=Object.
   observer.observe(status,{childList:true,characterData:true,subtree:true});
 })();
 
+let spikeEventTimestamp = null;
+function updateSpikeCountdown(){
+ const countdown=document.getElementById('spike-countdown');if(!countdown)return;
+ if(!spikeEventTimestamp){return;}
+ const seconds=Math.max(0,Math.floor((spikeEventTimestamp-Date.now())/1000));
+ if(seconds===0){countdown.textContent='RELEASE TIME';return;}
+ const h=String(Math.floor(seconds/3600)).padStart(2,'0');
+ const m=String(Math.floor((seconds%3600)/60)).padStart(2,'0');
+ const s=String(seconds%60).padStart(2,'0');
+ countdown.textContent=h+':'+m+':'+s;
+}
+function renderSpikeIntelligence(spike){
+ const countdown=document.getElementById('spike-countdown');
+ const direction=document.getElementById('spike-direction');
+ const eventName=document.getElementById('spike-event-name');
+ const instrument=document.getElementById('spike-instrument');
+ if(!countdown||!direction||!eventName||!instrument)return;
+ const status=spike?.status||'unavailable';
+ spikeEventTimestamp=spike?.event_time?Date.parse(spike.event_time):null;
+ if(status==='no_upcoming_event'||!spikeEventTimestamp||Number.isNaN(spikeEventTimestamp)){
+  countdown.textContent='NO UPCOMING NEWS';direction.textContent='WAIT';eventName.textContent='Calendar event not available';instrument.textContent='No active forecast';spikeEventTimestamp=null;return;
+ }
+ updateSpikeCountdown();
+ eventName.textContent=(spike.event_title||'High-impact news')+' · '+(spike.currency||'');
+ direction.textContent=(status==='forecast_ready'?(spike.direction||'WAIT'):'WAIT');
+ direction.dataset.direction=direction.textContent.toLowerCase();
+ instrument.textContent=spike.instrument|| (status==='countdown'?'Forecast starts at T-15:00':'Awaiting verified market data');
+}
+setInterval(updateSpikeCountdown,1000);
+
 async function loadNews(){
  const status=document.getElementById('news-status');
  const events=document.getElementById('news-events');
@@ -129,6 +160,7 @@ async function loadNews(){
  try{
   const response=await fetch('/api/news');
   const data=await response.json();
+  renderSpikeIntelligence(data.spike_intelligence);
   if(!response.ok)throw Error(data.detail||'News request failed');
   status.textContent=data.status==='live'?'Provider updates received · Calendar: '+data.calendar_status+' · Headlines: '+data.headlines_status:'News providers unavailable · No events or headlines are being invented.';
   events.innerHTML=(data.events||[]).length?(data.events||[]).map(e=>'<article class="news-item"><b>'+safe(e.title||'Untitled event')+'</b><small>'+safe(e.event_time||'Time not supplied')+' · '+safe(e.country||e.currency||'')+' · '+safe(e.importance||'')+'</small><small>Actual '+safe(e.actual??'—')+' · Forecast '+safe(e.forecast??'—')+' · Previous '+safe(e.previous??'—')+'</small></article>').join(''):'<div class="empty-state">No calendar events returned.</div>';
