@@ -502,7 +502,26 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
 
     market_credentials_configured = (bool(settings.twelve_data_api_key) if settings.market_data_provider == "twelve_data" else bool(settings.oanda_account_id and selected_oanda_token(settings)))
     candle_context["status"] = ("verified_candles_loaded" if candle_context["entry_candles"] else "unavailable" if market_credentials_configured else "not_connected")
-    context_text = "Verified OHLC candle context: " + str(candle_context) + ". Use only observed values. If unavailable, state that clearly and never invent prices or bias. D1 bias is contextual, not a guaranteed direction. Explain conflicts between D1 and the selected timeframe; prefer WAIT when evidence conflicts."
+    # Reuse the same verified candles for the indicator toolkit. This brings
+    # the supplied RSI/MACD/Bollinger/ATR/EMA confluence into the existing
+    # FastAPI assistant without creating a second app or another market feed.
+    if candle_context["entry_candles"]:
+        try:
+            candle_context["technical_analysis"] = analyze_technical(
+                pd.DataFrame(candle_context["entry_candles"]), payload.symbol, payload.timeframe
+            )
+        except (ValueError, TypeError, KeyError, IndexError) as exc:
+            candle_context["technical_analysis_status"] = f"insufficient_or_invalid_candles: {str(exc)[:120]}"
+    else:
+        candle_context["technical_analysis_status"] = "unavailable_no_verified_candles"
+    context_text = (
+        "Verified OHLC candle context and computed indicator analysis: " + str(candle_context) +
+        ". Use only observed values. If unavailable, state that clearly and never invent prices or bias. "
+        "Use EMA20/EMA50 trend, RSI, MACD, Bollinger %B and ATR as confluence evidence; explain each vote "
+        "and do not treat the mechanical signal as certainty. Use ATR-based levels only when the computed "
+        "analysis contains a valid plan. D1 bias is contextual, not a guaranteed direction. Explain conflicts "
+        "between D1 and the selected timeframe; prefer WAIT when evidence conflicts."
+    )
     instructions = (
         "You are Ewooooo AI, a specialist trading education and market-analysis assistant. "
         "Answer broad questions about forex, metals, crypto, indices, technical/fundamental analysis, "
