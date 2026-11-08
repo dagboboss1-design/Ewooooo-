@@ -457,21 +457,36 @@ async def paper_order_create(payload: PaperOrderRequest) -> dict[str, Any]:
     result = PaperTradingAdapter().submit(PaperOrder(**payload.model_dump()))
     if not result.accepted:
         raise HTTPException(status_code=422, detail={"reason": result.reason, "execution_mode": "simulation_only"})
+    account = get_paper_account(get_settings().database_url)
+    entry_fill = result.entry
+    entry_commission = 0.0
+    quote_to_account_rate = 1.0
+    if account is not None:
+        from forex_quant.paper_execution import CostModel
+        entry_fill = CostModel(account["spread"], account["slippage"], account["commission_per_unit"]).entry_fill(result.side, result.entry)
+        spec = account["contract_specs"].get(result.symbol)
+        if spec is not None:
+            quote_to_account_rate = float(spec["quote_to_account_rate"])
+            entry_commission = result.units * float(account["commission_per_unit"]) * quote_to_account_rate
     metadata = json.dumps({
         "paper_order_id": result.order_id,
         "quantity_units": result.units,
         "risk_amount": result.risk_amount,
+        "entry_mid_price": result.entry,
+        "entry_fill_price": entry_fill,
+        "realized_pnl_account": -entry_commission,
+        "fees_account": entry_commission,
         "execution_mode": result.execution_mode,
-        "quantity_note": "Generic simulation units only; not broker-ready lots or account-currency P&L.",
+        "quantity_note": "Generic simulation units only; not broker-ready lots.",
     })
     trade = create_trade(get_settings().database_url, {
         "symbol": result.symbol, "side": result.side, "timeframe": payload.timeframe,
-        "entry": result.entry, "stop_loss": result.stop_loss, "take_profit": result.take_profit,
+        "entry": entry_fill, "stop_loss": result.stop_loss, "take_profit": result.take_profit,
         "exit_price": None, "pnl": None, "status": "open", "source": "paper",
         "setup_text": metadata, "notes": "Simulated paper fill; no broker order was placed.",
     })
     return {"status": "paper_filled", "execution_mode": "simulation_only",
-            "execution_enabled": False, "paper_order": result.to_dict(), "trade": trade}
+            "execution_enabled": False, "paper_order": result.to_dict(), "simulated_entry_fill": entry_fill, "trade": trade}
 
 
 @app.get("/api/paper/positions")
@@ -836,7 +851,7 @@ async def paper_account_snapshot(payload: PaperAccountMarksRequest) -> dict[str,
             costs = CostModel(account["spread"], account["slippage"], account["commission_per_unit"])
             exit_fill = costs.exit_fill(trade["side"], float(payload.marks[trade["trade_id"]]))
             direction = 1.0 if trade["side"] == "BUY" else -1.0
-            unrealized += (exit_fill - float(trade["entry"])) * direction * remaining * float(spec["contract_size"]) * float(spec["quote_to_account_rate"])
+            unrealized += (exit_fill - float(trade["entry"])) * direction * remaining * float(spec["contract_size"]) * float(spec["quote_to_account_rate"])\n            unrealized -= remaining * float(account["commission_per_unit"]) * float(spec["quote_to_account_rate"])
         except KeyError as exc:
             raise HTTPException(status_code=422, detail=f"Missing contract specification or paper position field: {str(exc)}")
         except (TypeError, ValueError) as exc:
@@ -862,7 +877,7 @@ async def paper_reconcile() -> dict[str, Any]:
         try:
             metadata = json.loads(trade.get("setup_text") or "{}")
             original = float(metadata["quantity_units"])
-            remaining = float(metadata.get("remaining_quantity", original))
+            remaining = float(metadata.get("remaining_quantity", 0 if trade.get("status") == "closed" else original))
             if not isfinite(original) or not isfinite(remaining) or original <= 0 or remaining < 0 or remaining > original:
                 raise ValueError("invalid original or remaining quantity")
             if trade.get("status") == "open" and remaining <= 0:
