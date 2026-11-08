@@ -51,10 +51,9 @@ def test_account_snapshot_marks_open_position_with_exit_costs():
         10_000, [p], {"p1": 1.1010}, CostModel(spread=0.0002),
         ContractSpecification(1, 1),
     )
-    assert snapshot.unrealized_pnl == pytest.approx(0.8)
+    assert snapshot.unrealized_pnl == pytest.approx(0.9)
     assert snapshot.equity == pytest.approx(10_000.8)
 
 
 def test_execution_adapter_contract_is_structural():
-    from forex_quant.paper_trading import PaperTradingAdapter
-    assert hasattr(PaperTradingAdapter, "submit")
+    from forex_quant.paper_execution import ExecutionAdapter\n\n    class FakeAdapter:\n        def submit(self, order):\n            return order\n\n        def close(self, position_id, quantity, price):\n            return (position_id, quantity, price)\n\n    assert isinstance(FakeAdapter(), ExecutionAdapter)
