@@ -19,19 +19,38 @@
   show(initial);
 })();
 function renderAIProviderStatus(status){
- const states=status.ai_providers||{};
+ const providers=status.providers||status.ai_provider_health?.providers||{};
  const labels={cloudflare_worker:'Cloudflare Worker',openai:'OpenAI',pollinations:'Pollinations'};
- Object.keys(labels).forEach(key=>{const el=document.querySelector('[data-provider="'+key+'"]');if(!el)return;el.textContent=states[key]?'KEY CONFIGURED':'NOT CONFIGURED';el.dataset.state=states[key]?'configured':'off';});
- const offline=document.querySelector('[data-provider="offline"]');if(offline)offline.textContent='ALWAYS AVAILABLE';
- const pill=document.getElementById('ai-status-pill');if(pill)pill.textContent='PRIMARY · '+String(status.ai_provider_configured||'offline').replaceAll('_',' ').toUpperCase();
+ Object.keys(labels).forEach(key=>{
+  const el=document.querySelector('[data-provider="'+key+'"]');if(!el)return;
+  const p=providers[key]||{},state=p.state||(p.configured?'not_tested':'not_configured');
+  const display={active:'ACTIVE NOW',checking:'CHECKING…',unavailable:'FAILED · '+(p.detail||'Provider unavailable'),not_tested:'KEY SET · NOT TESTED',not_configured:'NOT CONFIGURED'};
+  el.textContent=display[state]||String(state).replaceAll('_',' ').toUpperCase();
+  el.dataset.state=state;
+  el.title=p.detail||labels[key];
+ });
+ const offline=document.querySelector('[data-provider="offline"]');if(offline){offline.textContent='EDUCATIONAL FALLBACK';offline.dataset.state='fallback';}
+ const active=status.active_provider||status.ai_provider_health?.active_provider;
+ const configured=Object.keys(labels).find(k=>providers[k]?.configured||status.ai_providers?.[k]);
+ const pill=document.getElementById('ai-status-pill');
+ if(pill)pill.textContent=active?'ACTIVE · '+active.replaceAll('_',' ').toUpperCase():configured?'KEY SET · NOT VERIFIED':'AI OFFLINE · NO PROVIDER';
+}
+async function refreshAIProviderStatus(){
+ try{const r=await fetch('/api/ai/status');if(!r.ok)throw Error('status unavailable');renderAIProviderStatus(await r.json());}
+ catch(e){const pill=document.getElementById('ai-status-pill');if(pill)pill.textContent='AI STATUS UNAVAILABLE';}
 }
 function updateAIProviderStatus(data){
- const active=String(data.provider||data.assistant_mode||'offline');
- const pill=document.getElementById('ai-status-pill');if(pill)pill.textContent='ACTIVE · '+active.replaceAll('_',' ').toUpperCase();
- document.querySelectorAll('[data-provider]').forEach(el=>{if(el.dataset.provider===active){el.textContent='ACTIVE NOW';el.dataset.state='active';}});
+ const diagnostics=data.provider_diagnostics||{};
+ if(diagnostics.providers)renderAIProviderStatus(diagnostics);
+ else{
+  const active=String(data.provider||data.assistant_mode||'offline');
+  const pill=document.getElementById('ai-status-pill');if(pill)pill.textContent=active==='offline'?'AI OFFLINE · EDUCATIONAL MODE':'ACTIVE · '+active.replaceAll('_',' ').toUpperCase();
+  document.querySelectorAll('[data-provider]').forEach(el=>{if(el.dataset.provider===active){el.textContent='ACTIVE NOW';el.dataset.state='active';}});
+ }
+ refreshAIProviderStatus();
 }
 const state={symbol:'EUR/USD',timeframe:'M15',refreshTimer:null};
-async function loadDashboard(){const statusEl=document.getElementById('connection');try{const [cfg,status]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/dashboard/status').then(r=>r.json())]);statusEl.textContent=status.market_data_connected?'FEED KEY CONFIGURED':'FEED NOT CONNECTED';const feed=document.getElementById('settings-feed');if(feed)feed.textContent=status.market_data_connected?'Configured':'Not connected';const ai=document.getElementById('settings-ai');if(ai)ai.textContent=status.ai_provider_configured||'offline';renderAIProviderStatus(status);const tf=document.getElementById('timeframes');tf.innerHTML=cfg.timeframes.map(t=>'<button type="button" class="'+(t===state.timeframe?'active':'')+'" data-tf="'+t+'">'+t+'</button>').join('');tf.addEventListener('click',e=>{const b=e.target.closest('button[data-tf]');if(!b)return;state.timeframe=b.dataset.tf;tf.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));loadCandles();});document.getElementById('chart-symbol').addEventListener('change',e=>{state.symbol=e.target.value;loadCandles();loadDailyBias();});await refreshQuotes();await loadCandles();await loadDailyBias();setInterval(refreshQuotes,1800000);setInterval(loadCandles,900000);setInterval(loadDailyBias,21600000);}catch(e){statusEl.textContent='DASHBOARD API UNAVAILABLE';}}
+async function loadDashboard(){const statusEl=document.getElementById('connection');try{const [cfg,status]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/dashboard/status').then(r=>r.json())]);statusEl.textContent=status.market_data_connected?'FEED KEY CONFIGURED':'FEED NOT CONNECTED';const feed=document.getElementById('settings-feed');if(feed)feed.textContent=status.market_data_connected?'Configured':'Not connected';const ai=document.getElementById('settings-ai');if(ai)ai.textContent=status.ai_provider_configured||'offline';renderAIProviderStatus(status);refreshAIProviderStatus();const tf=document.getElementById('timeframes');tf.innerHTML=cfg.timeframes.map(t=>'<button type="button" class="'+(t===state.timeframe?'active':'')+'" data-tf="'+t+'">'+t+'</button>').join('');tf.addEventListener('click',e=>{const b=e.target.closest('button[data-tf]');if(!b)return;state.timeframe=b.dataset.tf;tf.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));loadCandles();});document.getElementById('chart-symbol').addEventListener('change',e=>{state.symbol=e.target.value;loadCandles();loadDailyBias();});await refreshQuotes();await loadCandles();await loadDailyBias();setInterval(refreshQuotes,1800000);setInterval(loadCandles,900000);setInterval(loadDailyBias,21600000);}catch(e){statusEl.textContent='DASHBOARD API UNAVAILABLE';}}
 async function refreshQuotes(){try{const [cfg,market]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/market').then(r=>r.json())]);const bySymbol=Object.fromEntries((market.quotes||[]).map(q=>[q.symbol,q]));const unavailable=Object.fromEntries((market.unavailable||[]).map(x=>[typeof x==='string'?x:x.symbol,typeof x==='string'?'Feed not configured':x.reason]));document.getElementById('assets').innerHTML=cfg.assets.map(a=>{const q=bySymbol[a.symbol];if(q){const digits=a.symbol.includes('JPY')?3:(a.symbol==='BTC/USD'?2:a.symbol==='XAU/USD'||a.symbol==='XAG/USD'?2:5);const bid=q.bid==null?'not supplied':Number(q.bid).toFixed(digits);const ask=q.ask==null?'not supplied':Number(q.ask).toFixed(digits);return '<article class="asset"><strong>'+a.label+'</strong><div class="quote">'+Number(q.mid).toFixed(digits)+'</div><small>Bid '+bid+' · Ask '+ask+'</small><small class="live">PROVIDER DATA · '+String(q.source).toUpperCase()+'</small></article>';}return '<article class="asset"><strong>'+a.label+'</strong><small>'+a.class.toUpperCase()+'</small><small class="unavailable">'+(unavailable[a.symbol]?'Unavailable: '+unavailable[a.symbol]:'Waiting for verified feed')+'</small></article>';}).join('');const live=Object.keys(bySymbol).length;document.getElementById('connection').textContent=live?'CACHED PROVIDER QUOTES · '+live+' INSTRUMENTS':'LIVE FEED NOT CONNECTED';}catch(e){document.getElementById('connection').textContent='QUOTE UPDATE FAILED';}}
 function drawCandles(rows){const canvas=document.getElementById('candles'),ctx=canvas.getContext('2d'),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.floor(rect.width*dpr));canvas.height=Math.max(1,Math.floor(rect.height*dpr));ctx.scale(dpr,dpr);const w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h);const pad={l:8,r:66,t:14,b:24},cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;ctx.font='10px system-ui';ctx.fillStyle='#8da2bb';ctx.strokeStyle='#1b3550';ctx.lineWidth=1;const highs=rows.map(x=>Number(x.high)),lows=rows.map(x=>Number(x.low));let max=Math.max(...highs),min=Math.min(...lows);if(!Number.isFinite(max)||!Number.isFinite(min)||max<=min){document.getElementById('chart-status').textContent='Invalid candle data';return;}const extra=(max-min)*.07;max+=extra;min-=extra;const y=v=>pad.t+(max-v)/(max-min)*ch;for(let i=0;i<=4;i++){const yy=pad.t+ch*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();ctx.fillText((max-(max-min)*i/4).toFixed(state.symbol.includes('JPY')?3:state.symbol==='BTC/USD'?1:5),w-pad.r+5,yy+3);}const step=cw/rows.length,body=Math.max(2,Math.min(12,step*.62));rows.forEach((c,i)=>{const x=pad.l+i*step+step/2,o=Number(c.open),cl=Number(c.close),hi=Number(c.high),lo=Number(c.low),bull=cl>=o;ctx.strokeStyle=bull?'#19e58a':'#ff657a';ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(x,y(hi));ctx.lineTo(x,y(lo));ctx.stroke();const top=y(Math.max(o,cl)),height=Math.max(1,Math.abs(y(o)-y(cl)));ctx.fillRect(x-body/2,top,body,height);});const first=rows[0].time,last=rows[rows.length-1].time;ctx.fillStyle='#8da2bb';ctx.fillText(String(first).slice(0,16),pad.l,pad.t+ch+17);ctx.textAlign='right';ctx.fillText(String(last).slice(0,16),w-pad.r,pad.t+ch+17);ctx.textAlign='left';}
 
