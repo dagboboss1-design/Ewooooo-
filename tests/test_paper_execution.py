@@ -56,4 +56,13 @@ def test_account_snapshot_marks_open_position_with_exit_costs():
 
 
 def test_execution_adapter_contract_is_structural():
-    from forex_quant.paper_execution import ExecutionAdapter\n\n    class FakeAdapter:\n        def submit(self, order):\n            return order\n\n        def close(self, position_id, quantity, price):\n            return (position_id, quantity, price)\n\n    assert isinstance(FakeAdapter(), ExecutionAdapter)
+    from forex_quant.paper_execution import ExecutionAdapter
+
+    class FakeAdapter:
+        def submit(self, order):
+            return order
+
+        def close(self, position_id, quantity, price):
+            return (position_id, quantity, price)
+
+    assert isinstance(FakeAdapter(), ExecutionAdapter)
