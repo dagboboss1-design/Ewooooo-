@@ -77,6 +77,45 @@ class ChatRequest(BaseModel):
     timeframe: str = Field(default="M15", pattern="^(M5|M15|M30|H1|H4|D1)$")
 
 
+
+def offline_trading_answer(message: str, symbol: str, timeframe: str, chart_attached: bool) -> str:
+    """Deterministic educational fallback; does not claim live market analysis."""
+    q = message.lower()
+    if any(w in q for w in ("risk", "lot size", "position size", "0.5%")):
+        answer = ("RISK MANAGEMENT\\nAt 0.5% initial risk, planned cash risk = account equity × 0.005. "
+                  "Position size depends on stop distance, pip/tick value and quote-to-account conversion. "
+                  "Verify contract specifications and costs; never assume a universal lot size. "
+                  "System limits: 2% daily loss, 5% weekly loss and a consecutive-loss pause.")
+    elif any(w in q for w in ("rsi", "macd", "bollinger", "indicator")):
+        answer = ("INDICATORS\\nRSI measures recent momentum; overbought/oversold readings are not automatic reversals. "
+                  "MACD compares moving averages to describe momentum. Bollinger Bands show price relative to a "
+                  "moving average and volatility. Combine indicators with market structure and risk controls.")
+    elif any(w in q for w in ("stop loss", "take profit", "risk reward", "risk/reward")):
+        answer = ("STOPS & TARGETS\\nA stop-loss marks where the trade idea is invalidated; a take-profit is a planned exit. "
+                  "Risk/reward = potential reward divided by amount risked. A 2:1 target does not imply a 2-in-3 "
+                  "chance of winning. Define invalidation before entry.")
+    elif any(w in q for w in ("trend", "support", "resistance", "market structure")):
+        answer = ("MARKET STRUCTURE\\nAn uptrend typically forms higher highs and higher lows; a downtrend forms "
+                  "lower highs and lower lows. Support and resistance are reaction zones, not guaranteed barriers. "
+                  "Wait for confirmation and define invalidation.")
+    elif any(w in q for w in ("signal", "buy", "sell", "entry", "setup", "analyse", "analyze")):
+        answer = (f"SETUP CHECK · {symbol} · {timeframe}\\nOffline mode cannot inspect live prices or calculate a "
+                  "verified entry. Check completed candles, D1 bias, H4 context, spread and news risk. Require "
+                  "independent evidence and clear invalidation. If evidence conflicts or data is missing, WAIT.")
+    elif any(w in q for w in ("hello", "hi", "hey")):
+        answer = ("Hello! I'm Ewooooo's offline trading helper. Ask about forex basics, indicators, trends, "
+                  "stop-losses, position sizing or risk management.")
+    else:
+        answer = ("OFFLINE GUIDE\\nI can answer common educational questions about forex, indicators, market "
+                  "structure, trade planning and risk management. This is a limited built-in guide, not a "
+                  "general-purpose AI model. Add the OpenAI key privately for broader conversational answers.")
+    if chart_attached:
+        answer += ("\\n\\nCHART NOTE: The image was received, but offline mode cannot perform visual chart "
+                   "recognition. I will not invent levels or claim to have analysed it.")
+    return answer + ("\\n\\nDATA STATUS: Live prices and candles are not verified. Educational guidance only. "
+                     "Execution remains OFF.")
+
+
 def get_settings() -> Settings:
     return Settings()
 
@@ -202,11 +241,18 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
 @app.post("/api/ai/chat")
 async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
     settings = get_settings()
-    if not settings.openai_api_key:
-        raise HTTPException(status_code=503, detail="AI chat is not configured yet. Add OPENAI_API_KEY to the server environment.")
     message = payload.message.strip()
-    if not message:
+    if not message and not payload.chart_image:
         raise HTTPException(status_code=422, detail="Please enter a trading question.")
+    if not settings.openai_api_key:
+        if payload.symbol not in {a["symbol"] for a in ASSETS if a["symbol"] != "DXY"}:
+            raise HTTPException(status_code=400, detail="Unsupported analysis instrument.")
+        answer = offline_trading_answer(message, payload.symbol, payload.timeframe, bool(payload.chart_image))
+        return {"answer": answer, "model": "ewo-offline-guide", "assistant_mode": "offline",
+                "market_data_status": "not_connected", "daily_bias": "UNAVAILABLE",
+                "symbol": payload.symbol, "timeframe": payload.timeframe,
+                "chart_received": bool(payload.chart_image),
+                "chart_analysis": "not_supported_offline" if payload.chart_image else None}
     image_url = None
     if payload.chart_image:
         try:
@@ -289,7 +335,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
     answer = data.get("output_text") or "\n".join(item.get("text", "") for output in data.get("output", []) for item in output.get("content", []) if item.get("type") == "output_text").strip()
     if not answer:
         raise HTTPException(status_code=502, detail="AI service returned no text.")
-    return {"answer": answer, "model": settings.openai_model, "market_data_status": candle_context.get("status"), "daily_bias": candle_context.get("daily_bias"), "symbol": payload.symbol, "timeframe": payload.timeframe, "chart_received": bool(image_url)}
+    return {"answer": answer, "model": settings.openai_model, "assistant_mode": "full_ai", "market_data_status": candle_context.get("status"), "daily_bias": candle_context.get("daily_bias"), "symbol": payload.symbol, "timeframe": payload.timeframe, "chart_received": bool(image_url)}
 
 @app.get("/api/journal")
 async def journal_list():

@@ -316,3 +316,29 @@ def test_news_endpoint_reports_provider_errors_without_fake_events(monkeypatch):
     assert payload["headlines"] == []
     assert "schema changed" in payload["errors"]["calendar"]
     assert payload["headlines_status"] == "empty"
+
+ 
+def test_ai_chat_offline_mode_answers_without_openai_key(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(openai_api_key=""))
+    response = client.post("/api/ai/chat", json={"message":"Explain RSI and MACD", "symbol":"EUR/USD", "timeframe":"M15"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assistant_mode"] == "offline"
+    assert payload["model"] == "ewo-offline-guide"
+    assert "RSI measures recent momentum" in payload["answer"]
+    assert "Execution remains OFF" in payload["answer"]
+    assert payload["market_data_status"] == "not_connected"
+
+
+def test_ai_chat_offline_mode_does_not_claim_to_analyse_chart(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(openai_api_key=""))
+    response = client.post("/api/ai/chat", json={
+        "message":"Analyse this chart", "chart_image":"data:image/png;base64,aGVsbG8="
+    })
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["chart_received"] is True
+    assert payload["chart_analysis"] == "not_supported_offline"
+    assert "cannot perform visual chart recognition" in payload["answer"]
