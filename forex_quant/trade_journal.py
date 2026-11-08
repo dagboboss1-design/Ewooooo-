@@ -73,6 +73,7 @@ def performance_summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
     closed = [t for t in trades if t.get("status") == "closed"]
     scored = [(t, r_multiple(t)) for t in closed]
     scored = [(t, r) for t, r in scored if r is not None]
+    scored.sort(key=lambda pair: pair[0].get("created_at") or "")
     def stats(items):
         rs = [r for _, r in items]
         gains = sum(r for r in rs if r > 0)

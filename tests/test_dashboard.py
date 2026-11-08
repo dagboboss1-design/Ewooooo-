@@ -160,3 +160,14 @@ def test_journal_frontend_has_analytics_and_skip_action():
     assert "Skip setup · Log" in script
     assert "journal-analytics" in page
     assert "renderJournalAnalytics" in script
+
+
+def test_journal_can_log_skipped_setup(tmp_path, monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    db_url = "sqlite:///" + str(tmp_path / "skipped.db")
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(database_url=db_url))
+    response = client.post("/api/journal", json={"symbol":"EUR/USD","side":"BUY","timeframe":"M15","entry":1.1,"stop_loss":1.09,"take_profit":1.12,"setup_text":"Test setup","status":"skipped"})
+    assert response.status_code == 201
+    assert response.json()["trade"]["status"] == "skipped"
+    summary = client.get("/api/journal").json()["analytics"]
+    assert summary["skipped_setups"] == 1
