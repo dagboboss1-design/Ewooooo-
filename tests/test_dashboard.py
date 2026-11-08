@@ -448,3 +448,31 @@ def test_phase5_event_window_requires_timezone():
     import pytest
     with pytest.raises(ValueError):
         event_window_status("2026-11-08T12:30:00", "2026-11-08T12:31:00Z")
+
+
+def test_phase5_event_analysis_returns_surprise_not_trade_signal():
+    response = client.post("/api/news/event-analysis", json={
+        "actual": 3.2, "forecast": 3.0, "historical_surprises": [-0.1, 0.0, 0.1],
+        "event_time": "2026-11-08T12:30:00Z", "observed_time": "2026-11-08T12:31:00Z"
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["classification"] == "large_surprise"
+    assert data["surprise_sign"] == "positive"
+    assert data["event_window"]["within_window"] is True
+    assert "not a BUY/SELL" in data["interpretation"]
+    assert data["execution_enabled"] is False
+
+
+def test_phase5_session_threshold_endpoint():
+    response = client.post("/api/news/session-threshold", json={"historical_scores": list(range(1, 101))})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["percentile"] == 99
+    assert data["threshold"] == 99
+    assert data["status"] == "ready"
+
+
+def test_phase5_event_analysis_rejects_missing_history_shape():
+    response = client.post("/api/news/event-analysis", json={"actual": 3, "forecast": 2, "historical_surprises": "bad"})
+    assert response.status_code == 422

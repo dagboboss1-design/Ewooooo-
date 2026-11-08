@@ -534,8 +534,60 @@ async def news_spike_check(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Supply numeric positive ticks, spread and maximum_spread.")
     score = tick_spike_score(values, window=30)
     allowed = spread_guard(spread_value, maximum_value)
-    detected = score is not None and score >= 3.0
-    return {"tick_count": len(values), "spike_z_score": score, "spike_detected": detected, "spread": spread_value, "maximum_spread": maximum_value, "spread_allowed": allowed, "alert_eligible": bool(detected and allowed), "execution_enabled": False, "note": "Observed ticks only; no live stream is implied."}
+    history = payload.get("historical_scores", [])
+    try:
+        threshold = session_spike_threshold(history, 99.0) if isinstance(history, list) and history else 3.0
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="historical_scores must contain finite non-negative values.")
+    detected = score is not None and threshold is not None and score >= threshold
+    return {"tick_count": len(values), "spike_z_score": score, "spike_threshold": threshold, "threshold_source": "session_99th_percentile" if history else "default_3_z_score", "spike_detected": detected, "spread": spread_value, "maximum_spread": maximum_value, "spread_allowed": allowed, "alert_eligible": bool(detected and allowed), "execution_enabled": False, "note": "Observed ticks only; no live stream is implied."}
+
+
+@app.post("/api/news/event-analysis")
+async def news_event_analysis(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a verified release surprise; this is not a trade-direction forecast."""
+    from forex_quant.news_spike import normalized_surprise, event_window_status
+    try:
+        actual = float(payload["actual"])
+        forecast = float(payload["forecast"])
+        history = payload.get("historical_surprises", [])
+        if not isinstance(history, list):
+            raise ValueError("historical_surprises must be a list")
+        result = normalized_surprise(actual, forecast, history)
+        window = None
+        if payload.get("event_time") is not None and payload.get("observed_time") is not None:
+            window = event_window_status(payload["event_time"], payload["observed_time"], 120)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid event analysis input: {str(exc)[:160]}")
+    return {
+        "normalized_surprise": result.normalized,
+        "classification": result.classification,
+        "surprise_sign": result.direction_hint,
+        "event_window": window,
+        "interpretation": "Release surprise sign only; not a BUY/SELL instruction.",
+        "execution_enabled": False,
+    }
+
+
+@app.post("/api/news/session-threshold")
+async def news_session_threshold(payload: dict[str, Any]) -> dict[str, Any]:
+    """Calculate a historical 99th-percentile session threshold from supplied observations."""
+    from forex_quant.news_spike import session_spike_threshold
+    scores = payload.get("historical_scores", [])
+    try:
+        if not isinstance(scores, list):
+            raise ValueError("historical_scores must be a list")
+        threshold = session_spike_threshold(scores, 99.0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid session scores: {str(exc)[:160]}")
+    return {
+        "threshold": threshold,
+        "percentile": 99,
+        "sample_count": len(scores),
+        "status": "ready" if threshold is not None and len(scores) >= 30 else "insufficient_history",
+        "execution_enabled": False,
+    }
+
 
 @app.get("/api/news/impact/{currency}")
 async def news_currency_impact(currency: str) -> dict[str, Any]:
