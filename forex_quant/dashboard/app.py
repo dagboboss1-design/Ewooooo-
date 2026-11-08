@@ -462,7 +462,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
 
     if payload.timeframe != "D1":
         try:
-            entry = await get_analysis_candles(payload.timeframe, 100)
+            entry = await get_analysis_candles(payload.timeframe, 180)  # Match chart cache to avoid a duplicate Twelve Data credit.
             entry_rows = entry.to_dict(orient="records")
             candle_context["entry_candles"] = entry_rows[-80:]
             candle_context["entry_data_source"] = entry_rows[-1].get("source", settings.market_data_provider) if entry_rows else "unavailable"
