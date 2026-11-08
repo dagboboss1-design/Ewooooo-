@@ -13,9 +13,12 @@ class PaperAccountConfig(Base):
     config_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-def _session(database_url: str):
-    engine = create_engine(database_url, future=True, pool_pre_ping=True)
-    Base.metadata.create_all(engine)
+_engines = {}\n\ndef _session(database_url: str):
+    engine = _engines.get(database_url)
+    if engine is None:
+        engine = create_engine(database_url, future=True, pool_pre_ping=True)
+        Base.metadata.create_all(engine)
+        _engines[database_url] = engine
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
