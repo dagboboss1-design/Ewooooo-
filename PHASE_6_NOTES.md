@@ -9,6 +9,7 @@
 - Paper position listing and partial/full simulated close controls.
 - Partial-close history, remaining quantity, cumulative realized account-currency P&L and fees are persisted with the paper journal record.
 - Account snapshot endpoint calculates realized P&L, unrealized P&L and equity from supplied mark prices and explicit contract specifications.
+- Internal reconciliation endpoint checks paper journal quantity/status consistency and reports discrepancies.
 - Account-currency P&L is never estimated when contract size or quote-to-account conversion is missing.
 - Dashboard and API responses explicitly identify simulation mode and keep `execution_enabled: false`.
 
