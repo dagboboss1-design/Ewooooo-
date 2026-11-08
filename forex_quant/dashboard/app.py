@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from forex_quant.config import Settings
 from forex_quant.providers.oanda import OandaClient
 from forex_quant.providers.twelve_data import TwelveDataClient
-from forex_quant.trade_journal import create_trade, list_trades, update_trade
+from forex_quant.trade_journal import create_trade, list_trades, update_trade, performance_summary
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = [
@@ -45,12 +45,13 @@ class JournalCreate(BaseModel):
     take_profit: float | None = None
     setup_text: str = Field(min_length=1, max_length=10000)
     source: str = Field(default="ai", pattern="^(ai|manual)$")
+    status: str = Field(default="open", pattern="^(open|skipped)$")
 
 class JournalUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     exit_price: float | None = None
     pnl: float | None = None
-    status: str | None = Field(default=None, pattern="^(open|closed|cancelled)$")
+    status: str | None = Field(default=None, pattern="^(open|closed|cancelled|skipped)$")
     notes: str | None = Field(default=None, max_length=4000)
 
 class ChatRequest(BaseModel):
@@ -256,7 +257,7 @@ async def journal_list():
     trades = list_trades(get_settings().database_url)
     closed = [t for t in trades if t["status"] == "closed"]
     return {"trades": trades, "count": len(trades), "closed_count": len(closed),
-            "realized_pnl": sum((t["pnl"] or 0) for t in closed)}
+            "realized_pnl": sum((t["pnl"] or 0) for t in closed), "analytics": performance_summary(trades)}
 
 @app.post("/api/journal", status_code=201)
 async def journal_create(payload: JournalCreate):
@@ -267,7 +268,7 @@ async def journal_create(payload: JournalCreate):
     if side not in {"BUY", "SELL"}:
         raise HTTPException(status_code=400, detail="Side must be BUY or SELL.")
     values = payload.model_dump()
-    values.update(symbol=symbol, side=side, status="open", exit_price=None, pnl=None, notes="")
+    values.update(symbol=symbol, side=side, status=payload.status, exit_price=None, pnl=None, notes="")
     trade = create_trade(get_settings().database_url, values)
     return {"trade": trade, "message": "Saved to paper journal. No broker order was placed."}
 

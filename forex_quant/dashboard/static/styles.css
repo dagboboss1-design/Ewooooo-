@@ -3,3 +3,10 @@
 .daily-bias{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;padding:11px 12px;margin:8px 0 12px;background:#071322;border:1px solid #1b3a55;border-radius:9px}.daily-bias span{font-size:10px;letter-spacing:.08em;color:#8da2bb}.daily-bias strong{font-size:13px;color:#d9e7f7}.daily-bias strong[data-bias="bullish"]{color:#19e58a}.daily-bias strong[data-bias="bearish"]{color:#ff657a}.daily-bias small{grid-column:1/-1;color:#8da2bb;font-size:10px;line-height:1.4}
 
 .analysis-meta{display:block;margin-top:9px;padding-top:7px;border-top:1px solid #234360;color:#8da2bb;font-size:10px;letter-spacing:.03em;line-height:1.5}
+
+.journal-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}.journal-actions .journal-save{margin-top:0}
+.journal-analytics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.metric{background:#071322;border:1px solid #1b3a55;border-radius:9px;padding:10px;min-width:0}.metric small{display:block;color:#8da2bb;font-size:10px}.metric b{display:block;color:#edf5ff;font-size:16px;margin-top:4px}
+.journal-timeframes{margin-top:10px;padding:11px;border:1px solid #1b3a55;border-radius:9px;color:#8da2bb;font-size:11px}.journal-timeframes>b{display:block;color:#edf5ff;margin-bottom:8px}
+.timeframe-row{display:grid;grid-template-columns:.7fr .9fr 1fr 1fr;gap:5px;padding:6px 0;border-top:1px solid #1b3a55;font-size:10px}.timeframe-row span:first-child{color:#edf5ff;font-weight:700}
+@media(max-width:380px){.journal-analytics{grid-template-columns:repeat(2,minmax(0,1fr))}.timeframe-row{grid-template-columns:repeat(2,1fr)}}

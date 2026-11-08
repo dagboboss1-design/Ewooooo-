@@ -136,3 +136,27 @@ def test_chat_frontend_displays_daily_bias_metadata():
     script = Path("forex_quant/dashboard/static/app.js").read_text()
     assert "D1 BIAS:" in script
     assert "market_data_status" in script
+
+def test_journal_analytics_calculates_r_and_timeframe_breakdown():
+    from forex_quant.trade_journal import performance_summary
+    trades = [
+        {"status":"closed","side":"BUY","entry":1.10,"stop_loss":1.09,"exit_price":1.12,"timeframe":"M15","pnl":20},
+        {"status":"closed","side":"SELL","entry":1.20,"stop_loss":1.21,"exit_price":1.18,"timeframe":"H1","pnl":20},
+        {"status":"open","side":"BUY","entry":1.1,"stop_loss":1.09,"exit_price":None,"timeframe":"M15"},
+        {"status":"skipped","side":"BUY","entry":1.1,"stop_loss":1.09,"exit_price":None,"timeframe":"M15"},
+    ]
+    result = performance_summary(trades)
+    assert result["trades"] == 2
+    assert result["win_rate_pct"] == 100
+    assert result["average_r"] == 2.0
+    assert result["open_trades"] == 1
+    assert result["skipped_setups"] == 1
+    assert set(result["by_timeframe"]) == {"M15", "H1"}
+
+def test_journal_frontend_has_analytics_and_skip_action():
+    from pathlib import Path
+    script = Path("forex_quant/dashboard/static/app.js").read_text()
+    page = Path("forex_quant/dashboard/static/index.html").read_text()
+    assert "Skip setup · Log" in script
+    assert "journal-analytics" in page
+    assert "renderJournalAnalytics" in script

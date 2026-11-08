@@ -57,3 +57,43 @@ def update_trade(url: str, trade_id: str, values: dict):
         s.flush()
         result=serialize(t)
     return result
+
+
+def performance_summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute closed-trade R statistics and breakdowns."""
+    def r_multiple(t):
+        entry, stop, exit_price = t.get("entry"), t.get("stop_loss"), t.get("exit_price")
+        if entry is None or stop is None or exit_price is None:
+            return None
+        risk = abs(float(entry) - float(stop))
+        if risk <= 0:
+            return None
+        move = float(exit_price) - float(entry)
+        return (-move if t.get("side") == "SELL" else move) / risk
+    closed = [t for t in trades if t.get("status") == "closed"]
+    scored = [(t, r_multiple(t)) for t in closed]
+    scored = [(t, r) for t, r in scored if r is not None]
+    def stats(items):
+        rs = [r for _, r in items]
+        gains = sum(r for r in rs if r > 0)
+        losses = abs(sum(r for r in rs if r < 0))
+        equity = peak = drawdown = 0.0
+        for r in rs:
+            equity += r
+            peak = max(peak, equity)
+            drawdown = max(drawdown, peak - equity)
+        return {"trades": len(rs), "wins": sum(r > 0 for r in rs), "losses": sum(r < 0 for r in rs),
+                "win_rate_pct": round(sum(r > 0 for r in rs) / len(rs) * 100, 2) if rs else None,
+                "average_r": round(sum(rs) / len(rs), 3) if rs else None,
+                "profit_factor_r": round(gains / losses, 3) if losses else None,
+                "max_drawdown_r": round(drawdown, 3) if rs else None}
+    by_timeframe = {}
+    for trade, r in scored:
+        by_timeframe.setdefault(str(trade.get("timeframe") or "—"), []).append((trade, r))
+    result = stats(scored)
+    result.update({"total_records": len(trades), "open_trades": sum(t.get("status") == "open" for t in trades),
+                   "skipped_setups": sum(t.get("status") == "skipped" for t in trades), "closed_trades": len(closed),
+                   "unscored_closed": len(closed) - len(scored),
+                   "realized_pnl": round(sum(float(t.get("pnl") or 0) for t in closed), 2),
+                   "by_timeframe": {tf: stats(items) for tf, items in sorted(by_timeframe.items())}})
+    return result
