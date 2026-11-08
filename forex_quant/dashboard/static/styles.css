@@ -10,3 +10,6 @@
 .journal-timeframes{margin-top:10px;padding:11px;border:1px solid #1b3a55;border-radius:9px;color:#8da2bb;font-size:11px}.journal-timeframes>b{display:block;color:#edf5ff;margin-bottom:8px}
 .timeframe-row{display:grid;grid-template-columns:.7fr .9fr 1fr 1fr;gap:5px;padding:6px 0;border-top:1px solid #1b3a55;font-size:10px}.timeframe-row span:first-child{color:#edf5ff;font-weight:700}
 @media(max-width:380px){.journal-analytics{grid-template-columns:repeat(2,minmax(0,1fr))}.timeframe-row{grid-template-columns:repeat(2,1fr)}}
+
+/* Focused mobile page navigation */
+.nav{display:flex;gap:7px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;padding-bottom:4px}.nav::-webkit-scrollbar{display:none}.nav a{flex:0 0 auto}.nav a.active{border-color:#806d4d;background:#191a1b;color:#f1e4c9}[data-page][hidden]{display:none!important}.intro{margin-bottom:12px}
