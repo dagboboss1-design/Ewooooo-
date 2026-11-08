@@ -211,3 +211,46 @@ footer{color:#817b70;font-size:9px;line-height:1.5;padding:12px 4px;text-align:c
 .ai-panel .chat-compose textarea{min-height:58px;border-color:#675334;background:#0c0e0f}
 .ai-panel .chat-actions button,.ai-panel .upload-button{background:linear-gradient(135deg,#e8c775,#b98b3c);border-color:#f2d88e;color:#17130b;font-weight:800}
 @media(max-width:360px){.ai-provider-grid{gap:6px}.ai-provider{padding:9px}.ai-provider b{font-size:10px}}
+
+
+/* Conversation-first premium AI workspace */
+.ai-panel{padding:0;overflow:hidden}
+.ai-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 17px 14px;border-bottom:1px solid #3d3425;background:linear-gradient(110deg,#201b12,#111315 72%)}
+.ai-brand{display:flex;align-items:center;gap:11px;min-width:0}
+.ai-avatar,.ai-welcome-mark{display:grid;place-items:center;flex:0 0 auto;width:39px;height:39px;border:1px solid #8d703e;border-radius:13px;background:linear-gradient(145deg,#3b2d18,#171512);color:#f0d18b;font-size:20px;box-shadow:inset 0 1px #fff2}
+.ai-brand h3{margin:2px 0;font-size:18px;letter-spacing:-.035em}
+.ai-brand .eyebrow{margin:0}
+.ai-brand .muted{margin:2px 0 0}
+.ai-welcome{display:flex;align-items:center;gap:12px;margin:15px 15px 10px;padding:13px;border:1px solid #51432c;border-radius:14px;background:linear-gradient(120deg,#211c13,#151718)}
+.ai-welcome-mark{width:34px;height:34px;border-radius:11px}
+.ai-welcome b{display:block;color:#f2e8d3;font-size:13px}
+.ai-welcome p{margin:4px 0 0;color:#aaa397;font-size:11px;line-height:1.45}
+.ai-providers{margin:0 15px 10px;border:1px solid #39342b;border-radius:10px;background:#111315}
+.ai-providers summary{padding:10px 12px;color:#cdb987;font-size:10px;font-weight:750;letter-spacing:.07em;cursor:pointer;list-style-position:inside}
+.ai-providers .ai-provider-grid{padding:0 10px 10px;margin:0}
+.ai-panel .chat-log{display:flex;flex-direction:column;gap:13px;min-height:210px;max-height:48vh;overflow-y:auto;margin:0 13px;padding:14px 3px;border:0;border-top:1px solid #302a20;border-bottom:1px solid #302a20;border-radius:0;background:transparent;scroll-behavior:smooth}
+.ai-panel .chat-bubble{max-width:min(88%,620px);padding:12px 14px;border-radius:15px;font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 5px 16px #0003}
+.ai-panel .chat-bubble.assistant{align-self:flex-start;border:1px solid #4b402e;border-top-left-radius:5px;background:#1b1b18;color:#eee8da}
+.ai-panel .chat-bubble.user{align-self:flex-end;border:1px solid #745d36;border-top-right-radius:5px;background:#2a2419;color:#f5ead2}
+.ai-composer-shell{position:sticky;bottom:0;padding:11px 14px 12px;background:linear-gradient(180deg,#111315f2,#111315 24%);border-top:1px solid #39342b}
+.ai-panel .chat-tools{display:flex;align-items:center;gap:9px;min-height:30px;margin-bottom:8px}
+.ai-panel .upload-button{padding:7px 11px;border-radius:999px;font-size:10px}
+.ai-panel .chat-compose{display:flex;align-items:flex-end;gap:8px;padding:8px;border:1px solid #655333;border-radius:16px;background:#0b0d0e;box-shadow:0 5px 18px #0005}
+.ai-panel .chat-compose textarea{flex:1;min-width:0;min-height:45px;max-height:140px;resize:vertical;padding:10px 9px;border:0;background:transparent;box-shadow:none;font:inherit;font-size:13px;line-height:1.5}
+.ai-panel .chat-actions{display:flex;gap:6px;align-items:center}
+.ai-panel .chat-actions button{padding:9px 11px;border-radius:11px;font-size:10px;white-space:nowrap}
+.ai-panel .chat-actions #voice-input{background:#25282a;border:1px solid #4a4d4f;color:#ddd5c5;box-shadow:none}
+.ai-disclaimer{margin:8px 3px 0;color:#8e887d;font-size:9px;line-height:1.4;text-align:center}
+.ai-panel .analysis-meta{color:#aaa397}
+@media(max-width:520px){
+ .ai-heading{padding:14px 12px;align-items:flex-start}
+ .ai-avatar{width:35px;height:35px}
+ .ai-brand h3{font-size:16px}
+ .ai-status-pill{max-width:112px;text-align:center;line-height:1.35;font-size:8px}
+ .ai-welcome{margin:12px 11px 9px;padding:11px}
+ .ai-providers{margin-left:11px;margin-right:11px}
+ .ai-panel .chat-log{margin:0 10px;min-height:190px;max-height:44vh;padding:12px 2px}
+ .ai-panel .chat-bubble{max-width:93%;font-size:12px;padding:10px 12px}
+ .ai-composer-shell{padding:9px 10px calc(12px + env(safe-area-inset-bottom))}
+ .ai-panel .chat-actions button{padding:9px 10px}
+}
