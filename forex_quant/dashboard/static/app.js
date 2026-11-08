@@ -9,6 +9,14 @@
       link.classList.toggle('active',active);
       if(active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
     });
+    // The chart is initially fetched while the Markets page is visible and
+    // the Signals panel is hidden. Redraw only after the canvas has a layout.
+    if(page==='signals'){
+      requestAnimationFrame(()=>{
+        if(window.lastCandleRows?.length) drawCandles(window.lastCandleRows);
+        else if(typeof loadCandles==='function') loadCandles();
+      });
+    }
   }
   links.forEach(link=>link.addEventListener('click',event=>{
     event.preventDefault();
