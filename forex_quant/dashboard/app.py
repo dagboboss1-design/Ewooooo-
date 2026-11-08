@@ -595,8 +595,8 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
                         {"role":"system","content":instructions},
                         {"role":"user","content":user_content}], "max_tokens":1200})
             pr.raise_for_status()
-            pd = pr.json()
-            answer = pd.get("choices", [{}])[0].get("message", {}).get("content")
+            pollinations_data = pr.json()
+            answer = pollinations_data.get("choices", [{}])[0].get("message", {}).get("content")
             if answer:
                 _record_ai_provider("pollinations", "active", "Pollinations answered successfully.")
                 return {"answer":answer,"model":settings.pollinations_model,
