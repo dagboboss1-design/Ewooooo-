@@ -17,7 +17,8 @@ dependencies = [
   "python-dotenv>=1.0,<2",
   "lz4>=4.3,<5",
   "fastapi>=0.110,<1",
-  "uvicorn[standard]>=0.29,<1"
+  "uvicorn[standard]>=0.29,<1",
+  "psycopg2-binary>=2.9,<3"
 ]
 
 [project.optional-dependencies]
