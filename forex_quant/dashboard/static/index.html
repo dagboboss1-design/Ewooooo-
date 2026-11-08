@@ -59,7 +59,7 @@
       <label>Weekly loss so far (%)<input id="paper-order-weekly" type="number" min="0" max="99.99" step="0.01" value="0"></label>
       <label>Consecutive losses<input id="paper-order-losses" type="number" min="0" step="1" value="0"></label>
       <label><input id="paper-order-kill" type="checkbox"> Emergency kill switch</label>
-      <button id="submit-paper-order" type="button">Simulate paper order</button></div>
+      <button id="submit-paper-order" type="button" disabled>Simulate paper order</button></div>
       <p id="paper-order-status" class="scan-help">Paper orders are simulated only; no broker request is sent.</p></div>
       <div class="phase5-status"><b>Paper-account equity</b><div id="paper-equity" class="scan-result">Configure the account and enter verified mark prices to calculate equity.</div><button id="refresh-paper-equity" type="button">Calculate equity from entered marks</button></div>
       <div class="phase5-status"><b>Open paper positions</b><button id="run-paper-reconcile" type="button">Reconcile paper journal</button><p id="paper-reconcile-status" class="scan-help">No reconciliation run yet.</p><div id="paper-positions" class="journal-list">Loading paper positions…</div></div>
