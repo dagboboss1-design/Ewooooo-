@@ -521,6 +521,10 @@ def test_paper_account_persists_and_partial_closes_reconcile(tmp_path, monkeypat
     assert snapshot.json()["realized_pnl"] == 50.0
     assert snapshot.json()["equity"] == 10050.0
     assert snapshot.json()["execution_enabled"] is False
+    reconciliation = client.get("/api/paper/reconcile").json()
+    assert reconciliation["status"] == "consistent"
+    assert reconciliation["checked_paper_records"] == 1
+    assert reconciliation["execution_enabled"] is False
     assert client.get("/api/paper/positions").json()["count"] == 0
 
 
