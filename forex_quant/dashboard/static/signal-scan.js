@@ -26,7 +26,7 @@
       if(data.alert&&typeof data.alert==='object')lines.push('Alert: '+(data.alert.accepted?'accepted':'not accepted')+' · Telegram '+(data.alert.telegram_sent?'sent':'not sent')+' · Webhook '+(data.alert.webhook_sent?'sent':'not sent'));
       else if(data.alert)lines.push('Alert: '+data.alert);
       lines.push('Broker execution: OFF');
-      result.textContent=lines.join('\\n');
+      result.textContent=lines.join('\n');
       if(signal&&data.risk&&data.risk.approved){
         const actions=document.createElement('div');actions.className='journal-actions';
         const save=document.createElement('button');save.type='button';save.className='journal-save';save.textContent='＋ Mark as taken · Save to Journal';
