@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +28,7 @@ from forex_quant.providers.calendar import BiquoteCalendarClient
 from forex_quant.providers.gdelt import GdeltClient
 from forex_quant.trade_journal import create_trade, list_trades, update_trade, performance_summary
 from forex_quant.signals import generate_signal, RiskPolicy
+from forex_quant.ai_trader import analyze as analyze_technical
 from forex_quant.alerts import AlertDispatcher
 from forex_quant.news_spike import tick_spike_score, spread_guard, impacted_instruments, session_spike_threshold
 from forex_quant.news_spike_intelligence import build_pre_news_forecast
@@ -391,6 +393,32 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
     except (httpx.HTTPError, LookupError, ValueError) as exc:
         raise HTTPException(status_code=502, detail=f"Market candle request failed: {str(exc)[:200]}")
     return {"symbol": symbol, "timeframe": timeframe, "provider": settings.market_data_provider, "candles": frame.to_dict(orient="records")}
+
+
+@app.get("/api/analysis/technical")
+async def technical_analysis(symbol: str = "EUR/USD", timeframe: str = "M15") -> dict[str, Any]:
+    """Run the five-rule technical confluence engine on cached verified candles."""
+    if symbol not in {asset["symbol"] for asset in ASSETS if asset["symbol"] != "DXY"}:
+        raise HTTPException(status_code=400, detail="Unsupported symbol.")
+    if timeframe not in INTERVALS:
+        raise HTTPException(status_code=400, detail="Unsupported timeframe.")
+    try:
+        # Same symbol/timeframe/outputsize as the chart: provider cache is reused.
+        market = await market_candles(symbol=symbol, timeframe=timeframe, outputsize=180)
+        candles = market.get("candles", [])
+        frame = pd.DataFrame(candles)
+        result = analyze_technical(frame, symbol, timeframe)
+    except HTTPException:
+        raise
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=f"Technical analysis unavailable: {str(exc)[:180]}")
+    return {
+        **result,
+        "provider": market.get("provider"),
+        "data_status": market.get("data_status", "provider_data"),
+        "candles_used": len(frame),
+        "as_of": candles[-1].get("time") if candles else None,
+    }
 
 
 @app.post("/api/ai/chat")
