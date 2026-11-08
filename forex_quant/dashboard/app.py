@@ -23,6 +23,7 @@ from forex_quant.signals import generate_signal, RiskPolicy
 from forex_quant.alerts import AlertDispatcher
 from forex_quant.news_spike import tick_spike_score, spread_guard, impacted_instruments, session_spike_threshold
 from forex_quant.paper_trading import PaperOrder, PaperTradingAdapter
+from forex_quant.paper_account_store import get_paper_account, save_paper_account
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = [
@@ -704,3 +705,102 @@ async def news() -> dict[str, Any]:
         "headlines": headlines,
         "errors": errors,
     }
+
+
+class PaperAccountConfigRequest(BaseModel):
+    starting_balance: float = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=8)
+    spread: float = Field(default=0, ge=0)
+    slippage: float = Field(default=0, ge=0)
+    commission_per_unit: float = Field(default=0, ge=0)
+    contract_specs: dict[str, dict[str, float]]
+
+
+class PaperPartialCloseRequest(BaseModel):
+    quantity: float = Field(gt=0)
+    exit_price: float = Field(gt=0)
+
+
+@app.get("/api/paper/account")
+async def paper_account_get() -> dict[str, Any]:
+    config = get_paper_account(get_settings().database_url)
+    return {"configured": config is not None, "account": config,
+            "execution_mode": "simulation_only", "execution_enabled": False}
+
+
+@app.put("/api/paper/account")
+async def paper_account_put(payload: PaperAccountConfigRequest) -> dict[str, Any]:
+    supported = {a["symbol"] for a in ASSETS if a["symbol"] != "DXY"}
+    if not payload.contract_specs:
+        raise HTTPException(status_code=422, detail="Supply contract size and quote-to-account conversion for each instrument you intend to account for.")
+    normalized = {}
+    for symbol, spec in payload.contract_specs.items():
+        if symbol not in supported:
+            raise HTTPException(status_code=422, detail=f"Unsupported contract specification symbol: {symbol}")
+        try:
+            contract_size = float(spec["contract_size"])
+            conversion = float(spec["quote_to_account_rate"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"{symbol} requires contract_size and quote_to_account_rate.")
+        if not isfinite(contract_size) or contract_size <= 0 or not isfinite(conversion) or conversion <= 0:
+            raise HTTPException(status_code=422, detail=f"{symbol} contract values must be finite and positive.")
+        normalized[symbol] = {"contract_size": contract_size, "quote_to_account_rate": conversion}
+    config = payload.model_dump()
+    config["currency"] = payload.currency.strip().upper()
+    config["contract_specs"] = normalized
+    saved = save_paper_account(get_settings().database_url, config)
+    return {"configured": True, "account": saved, "execution_mode": "simulation_only",
+            "execution_enabled": False, "note": "Paper-only settings. No broker connection or order is enabled."}
+
+
+@app.post("/api/paper/positions/{trade_id}/partial-close")
+async def paper_position_partial_close(trade_id: str, payload: PaperPartialCloseRequest) -> dict[str, Any]:
+    from forex_quant.paper_execution import CostModel, ContractSpecification, PaperPosition, close_partial
+    trades = list_trades(get_settings().database_url)
+    existing = next((t for t in trades if t.get("trade_id") == trade_id), None)
+    if existing is None or existing.get("source") != "paper":
+        raise HTTPException(status_code=404, detail="Paper position not found.")
+    if existing.get("status") != "open":
+        raise HTTPException(status_code=409, detail="Paper position is not open.")
+    account = get_paper_account(get_settings().database_url)
+    if account is None:
+        raise HTTPException(status_code=409, detail="Configure the paper account and contract specification before monetary partial-close accounting.")
+    try:
+        metadata = json.loads(existing.get("setup_text") or "{}")
+        spec = account["contract_specs"][existing["symbol"]]
+        quantity = float(metadata.get("remaining_quantity", metadata["quantity_units"]))
+        position = PaperPosition(
+            position_id=trade_id, symbol=existing["symbol"], side=existing["side"],
+            entry_price=float(existing["entry"]), original_quantity=float(metadata["quantity_units"]),
+            remaining_quantity=quantity,
+            realized_pnl_account=float(metadata.get("realized_pnl_account", 0)),
+            fees_account=float(metadata.get("fees_account", 0)),
+        )
+        result = close_partial(
+            position, payload.quantity, payload.exit_price,
+            CostModel(account["spread"], account["slippage"], account["commission_per_unit"]),
+            ContractSpecification(spec["contract_size"], spec["quote_to_account_rate"]),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=422, detail=f"Missing account or contract specification: {str(exc)}")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    metadata.update({
+        "remaining_quantity": position.remaining_quantity,
+        "realized_pnl_account": position.realized_pnl_account,
+        "fees_account": position.fees_account,
+        "last_partial_close": {
+            "quantity": result.closed_quantity, "exit_price": payload.exit_price,
+            "realized_pnl_account": result.realized_pnl_account,
+            "commission_account": result.commission_account,
+        },
+        "execution_mode": "simulation_only",
+    })
+    values = {"setup_text": json.dumps(metadata, sort_keys=True),
+              "notes": (existing.get("notes", "") + " Partial close simulated; no broker order was placed.").strip()}
+    if result.status == "closed":
+        values.update(status="closed", exit_price=payload.exit_price, pnl=position.realized_pnl_account)
+    trade = update_trade(get_settings().database_url, trade_id, values)
+    return {"status": "paper_position_" + result.status, "execution_mode": "simulation_only",
+            "execution_enabled": False, "close": result.__dict__, "trade": trade,
+            "account_currency": account["currency"]}
