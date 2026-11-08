@@ -271,3 +271,6 @@ footer{color:#817b70;font-size:9px;line-height:1.5;padding:12px 4px;text-align:c
 .technical-notes{display:grid;gap:5px;margin:10px 0;padding-left:17px;color:#d0c8b7;font-size:10px;line-height:1.5}
 .technical-warning{display:block;color:#8e887d;font-size:9px;line-height:1.5}
 @media(max-width:380px){.technical-analysis{padding:11px}.technical-main strong{font-size:17px}.technical-tag{max-width:120px}}
+
+/* Plotly candlestick chart mount */
+#candles { width: 100%; height: 400px; display: block; }
