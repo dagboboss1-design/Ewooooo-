@@ -395,6 +395,8 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
 
 @app.post("/api/ai/chat")
 async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
+    global _AI_ACTIVE_PROVIDER
+    _AI_ACTIVE_PROVIDER = None
     settings = get_settings()
     for provider_name, configured in (("cloudflare_worker", bool(settings.cloudflare_worker_url)), ("openai", bool(settings.openai_api_key)), ("pollinations", bool(settings.pollinations_api_key))):
         if not configured:
@@ -435,6 +437,8 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
             raise LookupError("OANDA credentials are not configured.")
         granularity = "D" if tf == "D1" else tf
         return await _cached_provider_call(("candles", "oanda", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: OandaClient(token, settings.oanda_environment).candles(payload.symbol.replace("/", "_"), granularity, count))
+    daily_rows = []
+    completed_daily = []
     try:
         daily = await get_analysis_candles("D1", 80)
         daily_rows = daily.to_dict(orient="records")
@@ -452,18 +456,23 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
             bias = "BULLISH" if latest > ema20 and ema20 > prior_ema else "BEARISH" if latest < ema20 and ema20 < prior_ema else "NEUTRAL"
             candle_context.update(daily_bias=bias, daily_last_completed_close=latest, daily_ema20=ema20, daily_completed_bars=len(closes))
         candle_context["daily_candles"] = completed_daily[-60:]
-        if payload.timeframe != "D1":
+        candle_context["daily_data_source"] = daily_rows[-1].get("source", settings.market_data_provider) if daily_rows else "unavailable"
+    except (LookupError, httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
+        candle_context["daily_error"] = str(exc)[:160]
+
+    if payload.timeframe != "D1":
+        try:
             entry = await get_analysis_candles(payload.timeframe, 100)
-            candle_context["entry_candles"] = entry.to_dict(orient="records")[-80:]
-        else:
-            candle_context["entry_candles"] = completed_daily[-80:]
-        candle_context["status"] = "verified_candles_loaded"
-    except LookupError as exc:
-        candle_context["status"] = "not_connected"
-        candle_context["error"] = str(exc)[:200]
-    except (httpx.HTTPError, ValueError, KeyError) as exc:
-        candle_context["status"] = "unavailable"
-        candle_context["error"] = str(exc)[:200]
+            entry_rows = entry.to_dict(orient="records")
+            candle_context["entry_candles"] = entry_rows[-80:]
+            candle_context["entry_data_source"] = entry_rows[-1].get("source", settings.market_data_provider) if entry_rows else "unavailable"
+        except (LookupError, httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
+            candle_context["entry_error"] = str(exc)[:160]
+    else:
+        candle_context["entry_candles"] = completed_daily[-80:]
+        candle_context["entry_data_source"] = candle_context.get("daily_data_source", "unavailable")
+
+    candle_context["status"] = "verified_candles_loaded" if candle_context["entry_candles"] else "unavailable"
     context_text = "Verified OHLC candle context: " + str(candle_context) + ". Use only observed values. If unavailable, state that clearly and never invent prices or bias. D1 bias is contextual, not a guaranteed direction. Explain conflicts between D1 and the selected timeframe; prefer WAIT when evidence conflicts."
     instructions = (
         "You are Ewooooo AI, a specialist trading education and market-analysis assistant. "
