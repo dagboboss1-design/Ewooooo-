@@ -273,6 +273,8 @@ def test_dashboard_has_five_focused_pages_and_navigation():
     assert "if(page==='signals')" in script
     assert "requestAnimationFrame" in script
     assert "drawCandles(window.lastCandleRows)" in script
+    assert "appendAIDiagnostics(pending,data)" in script
+    assert "AI CONNECTION DIAGNOSTIC" in script
     assert '[data-page][hidden]' in Path("forex_quant/dashboard/static/styles.css").read_text()
 
 
@@ -338,6 +340,33 @@ def test_ai_chat_offline_mode_answers_without_openai_key(monkeypatch):
     assert "RSI measures recent momentum" in payload["answer"]
     assert "Execution remains OFF" in payload["answer"]
     assert payload["market_data_status"] == "not_connected"
+
+
+def test_ai_chat_uses_openai_when_configured(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    class FakeResponse:
+        def raise_for_status(self): pass
+        def json(self): return {"output_text": "OpenAI verified response"}
+    class FakeAsyncClient:
+        def __init__(self, timeout): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, headers, json):
+            assert url == "https://api.openai.com/v1/responses"
+            assert headers["Authorization"] == "Bearer test-openai"
+            assert json["model"] == "gpt-4.1-mini"
+            return FakeResponse()
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        openai_api_key="test-openai", openai_model="gpt-4.1-mini"
+    ))
+    monkeypatch.setattr(dashboard_module.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post("/api/ai/chat", json={"message":"Explain RSI"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "openai"
+    assert payload["assistant_mode"] == "openai"
+    assert payload["answer"] == "OpenAI verified response"
+    assert payload["execution_enabled"] is False
 
 
 def test_ai_chat_offline_mode_does_not_claim_to_analyse_chart(monkeypatch):
