@@ -55,6 +55,39 @@ async function refreshQuotes(){try{const [cfg,market]=await Promise.all([fetch('
 function drawCandles(rows){const canvas=document.getElementById('candles'),ctx=canvas.getContext('2d'),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.floor(rect.width*dpr));canvas.height=Math.max(1,Math.floor(rect.height*dpr));ctx.scale(dpr,dpr);const w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h);const pad={l:8,r:66,t:14,b:24},cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;ctx.font='10px system-ui';ctx.fillStyle='#8da2bb';ctx.strokeStyle='#1b3550';ctx.lineWidth=1;const highs=rows.map(x=>Number(x.high)),lows=rows.map(x=>Number(x.low));let max=Math.max(...highs),min=Math.min(...lows);if(!Number.isFinite(max)||!Number.isFinite(min)||max<=min){document.getElementById('chart-status').textContent='Invalid candle data';return;}const extra=(max-min)*.07;max+=extra;min-=extra;const y=v=>pad.t+(max-v)/(max-min)*ch;for(let i=0;i<=4;i++){const yy=pad.t+ch*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();ctx.fillText((max-(max-min)*i/4).toFixed(state.symbol.includes('JPY')?3:state.symbol==='BTC/USD'?1:5),w-pad.r+5,yy+3);}const step=cw/rows.length,body=Math.max(2,Math.min(12,step*.62));rows.forEach((c,i)=>{const x=pad.l+i*step+step/2,o=Number(c.open),cl=Number(c.close),hi=Number(c.high),lo=Number(c.low),bull=cl>=o;ctx.strokeStyle=bull?'#19e58a':'#ff657a';ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(x,y(hi));ctx.lineTo(x,y(lo));ctx.stroke();const top=y(Math.max(o,cl)),height=Math.max(1,Math.abs(y(o)-y(cl)));ctx.fillRect(x-body/2,top,body,height);});const first=rows[0].time,last=rows[rows.length-1].time;ctx.fillStyle='#8da2bb';ctx.fillText(String(first).slice(0,16),pad.l,pad.t+ch+17);ctx.textAlign='right';ctx.fillText(String(last).slice(0,16),w-pad.r,pad.t+ch+17);ctx.textAlign='left';}
 
 async function loadDailyBias(){const value=document.getElementById('daily-bias-value'),detail=document.getElementById('daily-bias-detail');value.textContent='Loading D1…';try{const url='/api/market/candles?symbol='+encodeURIComponent(state.symbol)+'&timeframe=D1&outputsize=80';const r=await fetch(url),d=await r.json();if(!r.ok)throw Error(d.detail||'Daily candles unavailable');const rows=(d.candles||[]).filter(x=>Number.isFinite(Number(x.close)));if(rows.length<25)throw Error('Need at least 25 daily candles for a reliable bias estimate.');const completed=rows.slice(0,-1);const closes=completed.map(x=>Number(x.close));const ema=[];const alpha=2/21;let current=closes[0];for(const close of closes){current=close*alpha+current*(1-alpha);ema.push(current);}const last=closes[closes.length-1],avg=ema[ema.length-1],prior=ema[Math.max(0,ema.length-6)];let bias='NEUTRAL';if(last>avg&&avg>prior)bias='BULLISH';else if(last<avg&&avg<prior)bias='BEARISH';value.textContent=bias;value.dataset.bias=bias.toLowerCase();detail.textContent='Last completed D1 close '+last+' · EMA20 '+avg.toFixed(state.symbol.includes('JPY')?3:5)+' · '+completed.length+' completed bars · '+d.provider.toUpperCase();}catch(e){value.textContent='UNAVAILABLE';value.dataset.bias='neutral';detail.textContent=e.message;}}
+async function loadTechnicalAnalysis(symbol=state.symbol,timeframe=state.timeframe){
+ const signal=document.getElementById('technical-signal');
+ const bias=document.getElementById('technical-bias');
+ const votes=document.getElementById('technical-votes');
+ const plan=document.getElementById('technical-plan');
+ const source=document.getElementById('technical-source');
+ const indicators=document.getElementById('technical-indicators');
+ const notes=document.getElementById('technical-notes');
+ if(!signal)return;
+ signal.textContent='CHECKING…';source.textContent='VERIFYING PROVIDER DATA';
+ try{
+  const url='/api/analysis/technical?symbol='+encodeURIComponent(symbol)+'&timeframe='+encodeURIComponent(timeframe);
+  const response=await fetch(url),data=await response.json();
+  if(!response.ok)throw Error(data.detail||'Technical analysis unavailable');
+  signal.textContent=data.signal||'HOLD / NO TRADE';
+  signal.dataset.signal=(data.signal||'hold').toLowerCase().replaceAll(' ','-');
+  bias.textContent='Bias · '+(data.bias||'Neutral');
+  votes.textContent=(data.votes||'—')+' · '+data.candles_used+' candles';
+  source.textContent=(data.data_status==='historical_backup_not_live'?'HISTORICAL BACKUP · NOT LIVE':String(data.provider||'PROVIDER').toUpperCase())+' · '+timeframe;
+  const p=data.plan;
+  plan.textContent=p?'Entry '+p.entry+' · Stop '+p.stop+' · Target '+p.target+' · RR 1:2':'No entry plan · confluence threshold not met';
+  const i=data.indicators||{};
+  indicators.textContent='RSI '+(i.rsi??'—')+' · ATR '+(i.atr??'—')+' · EMA20 '+(i.ema20??'—')+' · EMA50 '+(i.ema50??'—')+' · Volume '+(i.vol_ratio==null?'not available':i.vol_ratio+'x');
+  notes.replaceChildren(...(data.notes||[]).map(note=>{const li=document.createElement('li');li.textContent=note;return li;}));
+ }catch(error){
+  signal.textContent='WAIT / UNAVAILABLE';signal.dataset.signal='wait';
+  bias.textContent='Bias · Unconfirmed';votes.textContent='No verified analysis';
+  plan.textContent=error.message;source.textContent='NO VERIFIED ANALYSIS';
+  indicators.textContent='Indicators unavailable';
+  notes.replaceChildren();
+ }
+}
+
 let candleRequestId=0;
 async function loadCandles(){
 const requestId=++candleRequestId;
@@ -77,6 +110,7 @@ drawCandles(rows);
 status.textContent=(data.data_status==='historical_backup_not_live'?'HISTORICAL BACKUP · NOT LIVE':'PRIMARY FEED · '+String(data.provider||'provider').toUpperCase());
 document.getElementById('chart-count').textContent=rows.length+' candles';
 document.getElementById('chart-updated').textContent='Latest: '+String(rows[rows.length-1].time);
+await loadTechnicalAnalysis(requestedSymbol,requestedTimeframe);
 }catch(e){
 if(requestId!==candleRequestId)return;
 window.lastCandleRows=null;
