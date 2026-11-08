@@ -109,7 +109,7 @@ def test_ai_chat_uses_daily_and_selected_timeframe_candles(monkeypatch):
         def __init__(self, key): pass
         async def candles(self, symbol, interval, outputsize):
             assert interval in {"1day", "15min"}
-            return pd.DataFrame([{"time":f"2026-10-{i:02d}","open":1.0+i*.001,"high":1.01+i*.001,"low":.99+i*.001,"close":1.005+i*.001,"volume":10} for i in range(1, 41)])
+            return pd.DataFrame([{"time":f"2026-10-{i:02d}","open":1.0+i*.001,"high":1.01+i*.001,"low":.99+i*.001,"close":1.005+i*.001,"volume":10} for i in range(1, 81)])
     captured = {}
     class FakeResponse:
         def raise_for_status(self): pass
@@ -128,6 +128,7 @@ def test_ai_chat_uses_daily_and_selected_timeframe_candles(monkeypatch):
     assert response.status_code == 200
     assert response.json()["daily_bias"] in {"BULLISH", "BEARISH", "NEUTRAL"}
     assert "daily_bias" in captured["instructions"] and "entry_candles" in captured["instructions"]
+    assert "technical_analysis" in captured["instructions"] and "indicators" in captured["instructions"]
 
 
 def test_ai_chat_rejects_unsupported_timeframe():
