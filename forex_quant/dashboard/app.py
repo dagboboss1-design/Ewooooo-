@@ -472,7 +472,8 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         candle_context["entry_candles"] = completed_daily[-80:]
         candle_context["entry_data_source"] = candle_context.get("daily_data_source", "unavailable")
 
-    candle_context["status"] = "verified_candles_loaded" if candle_context["entry_candles"] else "unavailable"
+    market_credentials_configured = (bool(settings.twelve_data_api_key) if settings.market_data_provider == "twelve_data" else bool(settings.oanda_account_id and selected_oanda_token(settings)))
+    candle_context["status"] = ("verified_candles_loaded" if candle_context["entry_candles"] else "unavailable" if market_credentials_configured else "not_connected")
     context_text = "Verified OHLC candle context: " + str(candle_context) + ". Use only observed values. If unavailable, state that clearly and never invent prices or bias. D1 bias is contextual, not a guaranteed direction. Explain conflicts between D1 and the selected timeframe; prefer WAIT when evidence conflicts."
     instructions = (
         "You are Ewooooo AI, a specialist trading education and market-analysis assistant. "
