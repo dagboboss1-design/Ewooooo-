@@ -28,7 +28,7 @@ function renderAIProviderStatus(status){
 function updateAIProviderStatus(data){
  const active=String(data.provider||data.assistant_mode||'offline');
  const pill=document.getElementById('ai-status-pill');if(pill)pill.textContent='ACTIVE · '+active.replaceAll('_',' ').toUpperCase();
- document.querySelectorAll('[data-provider]').forEach(el=>{if(el.dataset.provider==='offline')return;if(el.dataset.provider===active){el.textContent='ACTIVE NOW';el.dataset.state='active';}});
+ document.querySelectorAll('[data-provider]').forEach(el=>{if(el.dataset.provider===active){el.textContent='ACTIVE NOW';el.dataset.state='active';}});
 }
 const state={symbol:'EUR/USD',timeframe:'M15',refreshTimer:null};
 async function loadDashboard(){const statusEl=document.getElementById('connection');try{const [cfg,status]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/dashboard/status').then(r=>r.json())]);statusEl.textContent=status.market_data_connected?'FEED KEY CONFIGURED':'FEED NOT CONNECTED';const feed=document.getElementById('settings-feed');if(feed)feed.textContent=status.market_data_connected?'Configured':'Not connected';const ai=document.getElementById('settings-ai');if(ai)ai.textContent=status.ai_provider_configured||'offline';renderAIProviderStatus(status);const tf=document.getElementById('timeframes');tf.innerHTML=cfg.timeframes.map(t=>'<button type="button" class="'+(t===state.timeframe?'active':'')+'" data-tf="'+t+'">'+t+'</button>').join('');tf.addEventListener('click',e=>{const b=e.target.closest('button[data-tf]');if(!b)return;state.timeframe=b.dataset.tf;tf.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));loadCandles();});document.getElementById('chart-symbol').addEventListener('change',e=>{state.symbol=e.target.value;loadCandles();loadDailyBias();});await refreshQuotes();await loadCandles();await loadDailyBias();setInterval(refreshQuotes,1800000);setInterval(loadCandles,900000);setInterval(loadDailyBias,21600000);}catch(e){statusEl.textContent='DASHBOARD API UNAVAILABLE';}}
@@ -55,7 +55,7 @@ if(!rows.length)throw new Error('Provider returned candles without valid OHLC va
 rows.sort((a,b)=>String(a.time).localeCompare(String(b.time)));
 if(requestId!==candleRequestId)return;
 drawCandles(rows);
-status.textContent='CACHED OHLC candles · '+String(data.provider||'provider').toUpperCase();
+status.textContent=(data.data_status==='historical_backup_not_live'?'HISTORICAL BACKUP · NOT LIVE':'PRIMARY FEED · '+String(data.provider||'provider').toUpperCase());
 document.getElementById('chart-count').textContent=rows.length+' candles';
 document.getElementById('chart-updated').textContent='Latest: '+String(rows[rows.length-1].time);
 }catch(e){
