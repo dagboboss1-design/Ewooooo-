@@ -789,11 +789,11 @@ async def paper_position_partial_close(trade_id: str, payload: PaperPartialClose
         "remaining_quantity": position.remaining_quantity,
         "realized_pnl_account": position.realized_pnl_account,
         "fees_account": position.fees_account,
-        "last_partial_close": {
+        "partial_closes": metadata.get("partial_closes", []) + [{
             "quantity": result.closed_quantity, "exit_price": payload.exit_price,
             "realized_pnl_account": result.realized_pnl_account,
             "commission_account": result.commission_account,
-        },
+        }],
         "execution_mode": "simulation_only",
     })
     values = {"setup_text": json.dumps(metadata, sort_keys=True),
@@ -804,3 +804,48 @@ async def paper_position_partial_close(trade_id: str, payload: PaperPartialClose
     return {"status": "paper_position_" + result.status, "execution_mode": "simulation_only",
             "execution_enabled": False, "close": result.__dict__, "trade": trade,
             "account_currency": account["currency"]}
+
+
+class PaperAccountMarksRequest(BaseModel):
+    marks: dict[str, float]
+
+
+@app.post("/api/paper/account/snapshot")
+async def paper_account_snapshot(payload: PaperAccountMarksRequest) -> dict[str, Any]:
+    from forex_quant.paper_execution import CostModel
+    account = get_paper_account(get_settings().database_url)
+    if account is None:
+        raise HTTPException(status_code=409, detail="Configure the paper account first.")
+    trades = [t for t in list_trades(get_settings().database_url) if t.get("source") == "paper"]
+    realized = 0.0
+    fees = 0.0
+    unrealized = 0.0
+    open_count = 0
+    for trade in trades:
+        try:
+            metadata = json.loads(trade.get("setup_text") or "{}")
+            realized += float(metadata.get("realized_pnl_account", 0))
+            fees += float(metadata.get("fees_account", 0))
+            if trade.get("status") != "open":
+                continue
+            open_count += 1
+            remaining = float(metadata.get("remaining_quantity", metadata["quantity_units"]))
+            if trade["trade_id"] not in payload.marks:
+                raise HTTPException(status_code=422, detail=f"Missing mark price for open paper position {trade['trade_id']}.")
+            spec = account["contract_specs"][trade["symbol"]]
+            costs = CostModel(account["spread"], account["slippage"], account["commission_per_unit"])
+            exit_fill = costs.exit_fill(trade["side"], float(payload.marks[trade["trade_id"]]))
+            direction = 1.0 if trade["side"] == "BUY" else -1.0
+            unrealized += (exit_fill - float(trade["entry"])) * direction * remaining * float(spec["contract_size"]) * float(spec["quote_to_account_rate"])
+        except KeyError as exc:
+            raise HTTPException(status_code=422, detail=f"Missing contract specification or paper position field: {str(exc)}")
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid paper account mark or metadata: {str(exc)}")
+    balance = float(account["starting_balance"])
+    return {
+        "currency": account["currency"], "starting_balance": round(balance, 2),
+        "realized_pnl": round(realized, 2), "unrealized_pnl": round(unrealized, 2),
+        "fees": round(fees, 2), "equity": round(balance + realized + unrealized, 2),
+        "open_positions": open_count, "execution_mode": "simulation_only",
+        "execution_enabled": False,
+    }
