@@ -483,8 +483,8 @@ def test_paper_account_persists_and_partial_closes_reconcile(tmp_path, monkeypat
     db_url = "sqlite:///" + str(tmp_path / "paper-account.db")
     monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(database_url=db_url))
     configured = client.put("/api/paper/account", json={
-        "starting_balance": 10000, "currency": "USD", "spread": 0,
-        "slippage": 0, "commission_per_unit": 0,
+        "starting_balance": 10000, "currency": "USD", "spread": 0.0002,
+        "slippage": 0.0001, "commission_per_unit": 0.001,
         "contract_specs": {"EUR/USD": {"contract_size": 1, "quote_to_account_rate": 1}}
     })
     assert configured.status_code == 200
@@ -498,6 +498,7 @@ def test_paper_account_persists_and_partial_closes_reconcile(tmp_path, monkeypat
     })
     assert opened.status_code == 201
     trade_id = opened.json()["trade"]["trade_id"]
+    assert abs(opened.json()["simulated_entry_fill"] - 1.1002) < 1e-8
 
     partial = client.post(f"/api/paper/positions/{trade_id}/partial-close", json={
         "quantity": 4000, "exit_price": 1.105
@@ -512,14 +513,15 @@ def test_paper_account_persists_and_partial_closes_reconcile(tmp_path, monkeypat
     assert final.status_code == 200
     assert final.json()["status"] == "paper_position_closed"
     assert final.json()["trade"]["status"] == "closed"
-    assert abs(final.json()["trade"]["pnl"] - 50.0) < 1e-8
+    assert abs(final.json()["trade"]["pnl"] - 26.0) < 1e-8
     import json
     history = json.loads(final.json()["trade"]["setup_text"])["partial_closes"]
     assert len(history) == 2
     snapshot = client.post("/api/paper/account/snapshot", json={"marks": {}})
     assert snapshot.status_code == 200
-    assert snapshot.json()["realized_pnl"] == 50.0
-    assert snapshot.json()["equity"] == 10050.0
+    assert snapshot.json()["realized_pnl"] == 26.0
+    assert snapshot.json()["fees"] == 20.0
+    assert snapshot.json()["equity"] == 10026.0
     assert snapshot.json()["execution_enabled"] is False
     reconciliation = client.get("/api/paper/reconcile").json()
     assert reconciliation["status"] == "consistent"
