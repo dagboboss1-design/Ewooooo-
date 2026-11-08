@@ -315,7 +315,10 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         else:
             candle_context["entry_candles"] = completed_daily[-80:]
         candle_context["status"] = "verified_candles_loaded"
-    except (httpx.HTTPError, LookupError, ValueError, KeyError) as exc:
+    except LookupError as exc:
+        candle_context["status"] = "not_connected"
+        candle_context["error"] = str(exc)[:200]
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
         candle_context["status"] = "unavailable"
         candle_context["error"] = str(exc)[:200]
     context_text = "Verified OHLC candle context: " + str(candle_context) + ". Use only observed values. If unavailable, state that clearly and never invent prices or bias. D1 bias is contextual, not a guaranteed direction. Explain conflicts between D1 and the selected timeframe; prefer WAIT when evidence conflicts."
