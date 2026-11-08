@@ -21,7 +21,7 @@ from forex_quant.providers.gdelt import GdeltClient
 from forex_quant.trade_journal import create_trade, list_trades, update_trade, performance_summary
 from forex_quant.signals import generate_signal, RiskPolicy
 from forex_quant.alerts import AlertDispatcher
-from forex_quant.news_spike import tick_spike_score, spread_guard, impacted_instruments
+from forex_quant.news_spike import tick_spike_score, spread_guard, impacted_instruments, session_spike_threshold
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = [
