@@ -13,7 +13,9 @@ class PaperAccountConfig(Base):
     config_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-_engines = {}\n\ndef _session(database_url: str):
+_engines = {}
+
+def _session(database_url: str):
     engine = _engines.get(database_url)
     if engine is None:
         engine = create_engine(database_url, future=True, pool_pre_ping=True)
