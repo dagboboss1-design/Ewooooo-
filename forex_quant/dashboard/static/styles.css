@@ -254,3 +254,20 @@ footer{color:#817b70;font-size:9px;line-height:1.5;padding:12px 4px;text-align:c
  .ai-composer-shell{padding:9px 10px calc(12px + env(safe-area-inset-bottom))}
  .ai-panel .chat-actions button{padding:9px 10px}
 }
+
+
+/* Integrated five-rule AI Trader analysis panel */
+.technical-analysis{margin-top:13px;padding:14px;border:1px solid #51432c;border-radius:13px;background:linear-gradient(145deg,#1b1a16,#111315)}
+.technical-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.technical-head h3{margin:3px 0 0;font-size:14px}
+.technical-tag{font-size:8px;letter-spacing:.08em;color:var(--muted);text-align:right}
+.technical-main{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:13px 0 8px}
+.technical-main strong{font-size:20px;color:var(--gold-bright)}
+.technical-main strong[data-signal*="buy"]{color:var(--green)}
+.technical-main strong[data-signal*="sell"]{color:var(--red)}
+.technical-main span{font-size:10px;color:var(--muted)}
+.technical-plan{font-size:12px;color:#e8d7aa;line-height:1.5;margin:7px 0}
+.technical-indicators{font-size:10px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.technical-notes{display:grid;gap:5px;margin:10px 0;padding-left:17px;color:#d0c8b7;font-size:10px;line-height:1.5}
+.technical-warning{display:block;color:#8e887d;font-size:9px;line-height:1.5}
+@media(max-width:380px){.technical-analysis{padding:11px}.technical-main strong{font-size:17px}.technical-tag{max-width:120px}}
