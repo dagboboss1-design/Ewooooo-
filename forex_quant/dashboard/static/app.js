@@ -1,3 +1,23 @@
+// Compact page navigation: keep each tool on its own focused screen.
+(function(){
+  const links=[...document.querySelectorAll('.nav a[data-page]')];
+  const panels=[...document.querySelectorAll('[data-page]')].filter(el=>!el.matches('.nav a'));
+  function show(page){
+    panels.forEach(panel=>{panel.hidden=panel.dataset.page!==page;});
+    links.forEach(link=>{
+      const active=link.dataset.page===page;
+      link.classList.toggle('active',active);
+      if(active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
+    });
+  }
+  links.forEach(link=>link.addEventListener('click',event=>{
+    event.preventDefault();
+    show(link.dataset.page);
+    history.replaceState(null,'',link.getAttribute('href'));
+  }));
+  const initial=links.find(link=>link.getAttribute('href')===location.hash)?.dataset.page||'markets';
+  show(initial);
+})();
 const state={symbol:'EUR/USD',timeframe:'M15',refreshTimer:null};
 async function loadDashboard(){const statusEl=document.getElementById('connection');try{const [cfg,status]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/dashboard/status').then(r=>r.json())]);statusEl.textContent=status.market_data_connected?'MARKET FEED KEY CONFIGURED':'LIVE FEED NOT CONNECTED';const tf=document.getElementById('timeframes');tf.innerHTML=cfg.timeframes.map(t=>'<button type="button" class="'+(t===state.timeframe?'active':'')+'" data-tf="'+t+'">'+t+'</button>').join('');tf.addEventListener('click',e=>{const b=e.target.closest('button[data-tf]');if(!b)return;state.timeframe=b.dataset.tf;tf.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));loadCandles();});document.getElementById('chart-symbol').addEventListener('change',e=>{state.symbol=e.target.value;loadCandles();loadDailyBias();});await refreshQuotes();await loadCandles();await loadDailyBias();setInterval(refreshQuotes,15000);setInterval(loadCandles,60000);setInterval(loadDailyBias,300000);}catch(e){statusEl.textContent='DASHBOARD API UNAVAILABLE';}}
 async function refreshQuotes(){try{const [cfg,market]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/market').then(r=>r.json())]);const bySymbol=Object.fromEntries((market.quotes||[]).map(q=>[q.symbol,q]));const unavailable=Object.fromEntries((market.unavailable||[]).map(x=>[typeof x==='string'?x:x.symbol,typeof x==='string'?'Feed not configured':x.reason]));document.getElementById('assets').innerHTML=cfg.assets.map(a=>{const q=bySymbol[a.symbol];if(q){const digits=a.symbol.includes('JPY')?3:(a.symbol==='BTC/USD'?2:a.symbol==='XAU/USD'||a.symbol==='XAG/USD'?2:5);const bid=q.bid==null?'not supplied':Number(q.bid).toFixed(digits);const ask=q.ask==null?'not supplied':Number(q.ask).toFixed(digits);return '<article class="asset"><strong>'+a.label+'</strong><div class="quote">'+Number(q.mid).toFixed(digits)+'</div><small>Bid '+bid+' · Ask '+ask+'</small><small class="live">LIVE · '+String(q.source).toUpperCase()+'</small></article>';}return '<article class="asset"><strong>'+a.label+'</strong><small>'+a.class.toUpperCase()+'</small><small class="unavailable">'+(unavailable[a.symbol]?'Unavailable: '+unavailable[a.symbol]:'Waiting for verified feed')+'</small></article>';}).join('');const live=Object.keys(bySymbol).length;document.getElementById('connection').textContent=live?'LIVE QUOTES · '+live+' INSTRUMENTS':'LIVE FEED NOT CONNECTED';}catch(e){document.getElementById('connection').textContent='QUOTE UPDATE FAILED';}}
