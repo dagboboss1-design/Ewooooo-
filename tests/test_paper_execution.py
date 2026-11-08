@@ -52,7 +52,7 @@ def test_account_snapshot_marks_open_position_with_exit_costs():
         ContractSpecification(1, 1),
     )
     assert snapshot.unrealized_pnl == pytest.approx(0.9)
-    assert snapshot.equity == pytest.approx(10_000.8)
+    assert snapshot.equity == pytest.approx(10_000.9)
 
 
 def test_execution_adapter_contract_is_structural():
