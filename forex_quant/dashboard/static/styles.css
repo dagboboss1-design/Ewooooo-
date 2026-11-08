@@ -47,3 +47,144 @@ body{background:var(--bg);color:var(--text)}
 .phase5-status{display:grid;gap:6px;margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:9px;background:#1c2023;font-size:12px}
 .phase5-status b{color:var(--gold)}.phase5-status span,.phase5-status small{color:var(--muted);line-height:1.5}
 @media(max-width:520px){.shell{padding-left:12px;padding-right:12px}.header-actions .connection{max-width:110px;font-size:9px}.chart-wrap{height:255px}.bottom-nav a{font-size:9px}}
+
+
+/* Ewooooo premium dashboard refresh — charcoal, champagne gold, clean trading terminal */
+:root{
+  color-scheme:dark;
+  --bg:#090a0b;
+  --panel:#111315;
+  --panel2:#17191b;
+  --line:#3b3325;
+  --text:#f2f0eb;
+  --muted:#a6a29a;
+  --gold:#d8b66c;
+  --gold-bright:#f1ce78;
+  --green:#18d878;
+  --red:#ff626b;
+  --shadow:0 12px 30px rgba(0,0,0,.28);
+}
+html{background:var(--bg);scroll-behavior:smooth}
+body{
+  margin:0;
+  background:radial-gradient(ellipse at 50% -15%,#302514 0,transparent 42%),var(--bg);
+  color:var(--text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  letter-spacing:.005em;
+}
+.shell{width:min(100% - 28px,920px);max-width:920px;margin:0 auto;padding:0 0 104px}
+.topbar{
+  position:relative;padding:18px 4px 16px;
+  background:linear-gradient(110deg,rgba(20,19,16,.96),rgba(9,10,11,.94));
+  border-bottom:1px solid #6d5731;
+}
+.brand{display:flex;align-items:center;gap:13px;min-width:0}
+.brand .mark{
+  width:54px;height:54px;border:1px solid #9c793a;border-radius:16px;
+  display:grid;place-items:center;font-size:34px;font-weight:800;
+  color:var(--gold-bright);background:linear-gradient(145deg,#332817,#111);
+  box-shadow:0 0 24px #d6a94a1c,inset 0 1px #f8df9a30;
+}
+.brand h1{margin:0;color:var(--gold-bright);font-size:clamp(23px,5vw,31px);font-weight:850;letter-spacing:-.04em}
+.brand p{margin:3px 0 0;color:#c6b58e;font-size:9px;letter-spacing:.18em;font-weight:700}
+.header-actions{gap:9px}
+.connection{font-size:10px;white-space:nowrap}
+.connection i{background:var(--green);box-shadow:0 0 10px #18d87888}
+.settings-trigger{border-color:#705a35;color:var(--gold-bright);background:#181613}
+.intro{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 2px 13px}
+.intro h2{font-size:clamp(19px,4vw,25px);letter-spacing:-.035em;margin:2px 0 4px}
+.eyebrow{color:var(--gold);font-weight:750;letter-spacing:.16em;font-size:9px}
+.muted,.connection{color:var(--muted)}
+.pill{background:#171613;border:1px solid #725b34;color:#e7ca8c;border-radius:999px;padding:7px 10px;font-size:9px;letter-spacing:.08em;font-weight:750}
+.panel{
+  background:linear-gradient(145deg,rgba(27,27,25,.98),rgba(14,16,17,.99));
+  border:1px solid #51432c;border-radius:17px;padding:16px;margin:0 0 13px;
+  box-shadow:var(--shadow),inset 0 1px rgba(255,255,255,.025);
+}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.section-head h3,h3{font-size:16px;letter-spacing:-.02em;margin:3px 0;color:#f5f2eb}
+.asset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.asset{
+  background:linear-gradient(135deg,#1b1c1b,#111314);
+  border:1px solid #38332a;border-radius:12px;padding:12px;min-width:0;
+}
+.asset strong,.asset b{color:#f2eee5}
+.asset .live,.safe{color:var(--green)}
+.asset .unavailable{color:var(--muted)}
+.chart-wrap{
+  height:310px;border:1px solid #4b402e;border-radius:13px;
+  background:repeating-linear-gradient(0deg,transparent,transparent 39px,#d8b66c10 40px),
+  repeating-linear-gradient(90deg,transparent,transparent 54px,#d8b66c0c 55px),#0c0e0f;
+  box-shadow:inset 0 0 28px #0008;
+}
+.chart-meta,.chart-legend{color:#aaa397;font-size:10px}
+.chart-legend .bull{background:var(--green)}.chart-legend .bear{background:var(--red)}
+.chart-controls select,.scan-form input,.scan-form select,.chat-compose textarea,.journal-close input{
+  background:#0d0f10;border:1px solid #55472f;color:#f2eee5;border-radius:9px;
+}
+.timeframes{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.timeframes button{
+  background:#191a19;border:1px solid #4a402e;color:#c9c2b4;border-radius:8px;
+  padding:6px 9px;font-size:10px
+}
+.timeframes button.active,.timeframes button[aria-pressed=true]{
+  background:linear-gradient(135deg,#f1d181,#bd9142);border-color:#f1d181;color:#15120c;font-weight:800
+}
+.daily-bias{background:#171816;border:1px solid #4d402c;border-radius:11px}
+.daily-bias strong[data-bias="bullish"]{color:var(--green)}
+.daily-bias strong[data-bias="bearish"]{color:var(--red)}
+.two-col{gap:12px}
+.metric,.journal-trade,.news-item,.journal-summary,.journal-timeframes,.phase5-status,.scan-result{
+  background:#151718;border:1px solid #39342b;border-radius:11px;color:var(--text)
+}
+.metric small,.journal-trade small,.phase5-status span,.phase5-status small{color:var(--muted)}
+.metric b{color:var(--gold-bright)}
+.risk-value{color:var(--gold-bright)}
+.meter{background:#29251e}
+.meter span{background:linear-gradient(90deg,#b58a3d,#f1d181)}
+.scan-form button,.journal-save,.journal-close button,.chat-actions button,.upload-button,
+#refresh-paper-equity,#run-paper-reconcile{
+  background:linear-gradient(135deg,#e8c775,#b98b3c);border:1px solid #f2d88e;
+  color:#17130b;border-radius:9px;font-weight:800;box-shadow:0 4px 14px #c49b4a20;
+}
+.scan-result{line-height:1.6}
+.chat-bubble.assistant{background:#1b1b18;border:1px solid #51432c;color:#eee8da}
+.chat-bubble.user{background:#222017;border:1px solid #6d5731}
+.news-item a{color:#e8cf98}
+.bottom-nav{
+  left:50%;transform:translateX(-50%);width:min(100%,920px);
+  box-sizing:border-box;background:rgba(16,17,17,.97);backdrop-filter:blur(16px);
+  border:1px solid #5b482a;border-bottom:0;border-radius:18px 18px 0 0;
+  box-shadow:0 -8px 28px #0008;padding:7px max(8px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));
+}
+.bottom-nav a{border-right:1px solid #302b22;color:#b6b0a4;font-size:10px;font-weight:650}
+.bottom-nav a.active{color:#f1d181;background:linear-gradient(180deg,#302718,#1b1914);border:1px solid #8b6b36;border-radius:11px}
+footer{color:#817b70;font-size:9px;line-height:1.5;padding:12px 4px;text-align:center}
+@media(min-width:700px){
+ .shell{padding-top:10px}
+ .asset-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .chart-wrap{height:360px}
+ .panel{padding:19px}
+}
+@media(max-width:520px){
+ .shell{width:calc(100% - 20px);padding-bottom:100px}
+ .topbar{padding:14px 2px}
+ .brand .mark{width:46px;height:46px;border-radius:13px}
+ .brand p{font-size:8px;letter-spacing:.12em}
+ .header-actions .connection{max-width:78px;font-size:9px}
+ .intro{align-items:flex-start}
+ .intro .muted{font-size:10px;line-height:1.4}
+ .panel{padding:13px;border-radius:14px}
+ .asset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .chart-wrap{height:260px}
+ .section-head{align-items:flex-start}
+ .chart-controls{max-width:62%}
+ .bottom-nav a{font-size:9px;padding:9px 1px}
+ .two-col{display:grid;grid-template-columns:1fr}
+}
+@media(max-width:360px){
+ .asset-grid{grid-template-columns:1fr}
+ .brand h1{font-size:22px}
+ .settings-trigger{width:34px;height:34px}
+ .chart-wrap{height:230px}
+}
