@@ -196,3 +196,52 @@ def test_health_and_readiness_probes(monkeypatch):
     assert ready.json()["market_data_configured"] is False
     assert ready.json()["ai_configured"] is False
     assert ready.json()["execution_enabled"] is False
+
+
+
+def test_signal_scan_requires_explicit_provider_credentials(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        market_data_provider="twelve_data", twelve_data_api_key=""
+    ))
+    response = client.post("/api/signals/scan", json={
+        "symbol":"EUR/USD", "timeframe":"M15", "equity":10000,
+        "quote_to_account_rate":1
+    })
+    assert response.status_code == 503
+
+
+def test_signal_scan_uses_only_completed_candles(monkeypatch):
+    import pandas as pd
+    from forex_quant.dashboard import app as dashboard_module
+    captured = {}
+    class FakeProvider:
+        def __init__(self, key): pass
+        async def candles(self, symbol, interval, outputsize):
+            return pd.DataFrame([{
+                "time":f"2026-10-{i:02d}", "open":1.0, "high":1.1,
+                "low":0.9, "close":1.01
+            } for i in range(1, 71)])
+    def no_signal(frame, instrument, equity, **kwargs):
+        captured["rows"] = len(frame)
+        return None
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        market_data_provider="twelve_data", twelve_data_api_key="test"
+    ))
+    monkeypatch.setattr(dashboard_module, "TwelveDataClient", FakeProvider)
+    monkeypatch.setattr(dashboard_module, "generate_signal", no_signal)
+    response = client.post("/api/signals/scan", json={
+        "symbol":"EUR/USD", "timeframe":"M15", "equity":10000,
+        "quote_to_account_rate":1
+    })
+    assert response.status_code == 200
+    assert response.json()["status"] == "no_setup"
+    assert captured["rows"] == 69
+
+
+def test_signal_scan_rejects_unknown_symbol():
+    response = client.post("/api/signals/scan", json={
+        "symbol":"DXY", "timeframe":"M15", "equity":10000,
+        "quote_to_account_rate":1
+    })
+    assert response.status_code == 400

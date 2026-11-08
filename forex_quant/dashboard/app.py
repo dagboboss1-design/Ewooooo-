@@ -15,6 +15,8 @@ from forex_quant.config import Settings
 from forex_quant.providers.oanda import OandaClient
 from forex_quant.providers.twelve_data import TwelveDataClient
 from forex_quant.trade_journal import create_trade, list_trades, update_trade, performance_summary
+from forex_quant.signals import generate_signal, RiskPolicy
+from forex_quant.alerts import AlertDispatcher
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = [
@@ -53,6 +55,17 @@ class JournalUpdate(BaseModel):
     pnl: float | None = None
     status: str | None = Field(default=None, pattern="^(open|closed|cancelled|skipped)$")
     notes: str | None = Field(default=None, max_length=4000)
+
+class SignalScanRequest(BaseModel):
+    symbol: str = Field(min_length=2, max_length=20)
+    timeframe: str = Field(default="M15", pattern="^(M5|M15|M30|H1|H4|D1)$")
+    equity: float = Field(gt=0)
+    quote_to_account_rate: float = Field(gt=0)
+    daily_loss_fraction: float = Field(default=0, ge=0, lt=1)
+    weekly_loss_fraction: float = Field(default=0, ge=0, lt=1)
+    consecutive_losses: int = Field(default=0, ge=0)
+    kill_switch: bool = False
+
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=6000)
@@ -307,9 +320,86 @@ async def journal_update(trade_id: str, payload: JournalUpdate):
         raise HTTPException(status_code=404, detail="Journal trade not found.")
     return {"trade": trade}
 
+@app.post("/api/signals/scan")
+async def scan_signal(payload: SignalScanRequest) -> dict[str, Any]:
+    """Scan one instrument using completed candles and an explicit account-risk context."""
+    if payload.symbol not in {a["symbol"] for a in ASSETS if a["symbol"] != "DXY"}:
+        raise HTTPException(status_code=400, detail="Unsupported signal instrument.")
+    settings = get_settings()
+    try:
+        if settings.market_data_provider == "twelve_data":
+            if not settings.twelve_data_api_key:
+                raise HTTPException(status_code=503, detail="TWELVE_DATA_API_KEY is not configured.")
+            frame = await TwelveDataClient(settings.twelve_data_api_key).candles(
+                payload.symbol, INTERVALS[payload.timeframe], 120
+            )
+        else:
+            token = selected_oanda_token(settings)
+            if not token or not settings.oanda_account_id:
+                raise HTTPException(status_code=503, detail="OANDA credentials are not configured.")
+            frame = await OandaClient(token, settings.oanda_environment).candles(
+                payload.symbol.replace("/", "_"), "D" if payload.timeframe == "D1" else payload.timeframe, 120
+            )
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, LookupError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"Signal candle request failed: {str(exc)[:200]}")
+
+    # Exclude the newest provider candle: it may still be forming.
+    completed = frame.iloc[:-1].copy()
+    if len(completed) < 60:
+        return {"status": "insufficient_completed_candles", "symbol": payload.symbol,
+                "timeframe": payload.timeframe, "signals": []}
+
+    policy = RiskPolicy()
+    decision = policy.evaluate(
+        daily_loss_fraction=payload.daily_loss_fraction,
+        weekly_loss_fraction=payload.weekly_loss_fraction,
+        consecutive_losses=payload.consecutive_losses,
+        kill_switch=payload.kill_switch,
+    )
+    try:
+        candidate = generate_signal(
+            completed, payload.symbol, payload.equity,
+            quote_to_account_rate=payload.quote_to_account_rate,
+            risk_fraction=policy.trade_risk_fraction,
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=422, detail=f"Signal calculation rejected the data: {str(exc)[:180]}")
+    if candidate is None:
+        return {"status": "no_setup", "symbol": payload.symbol, "timeframe": payload.timeframe,
+                "completed_candles": len(completed), "signals": []}
+
+    signal = candidate.to_dict()
+    if not decision.approved:
+        return {"status": "blocked_by_risk", "symbol": payload.symbol, "timeframe": payload.timeframe,
+                "risk": {"approved": False, "reason": decision.reason}, "signals": [signal],
+                "alert": "not_sent"}
+
+    destinations = bool(settings.telegram_alerts_enabled and settings.telegram_bot_token and settings.telegram_chat_id) or bool(settings.alert_webhook_url)
+    alert_result = None
+    if destinations:
+        dispatcher = AlertDispatcher(
+            telegram_bot_token=settings.telegram_bot_token if settings.telegram_alerts_enabled else "",
+            telegram_chat_id=settings.telegram_chat_id if settings.telegram_alerts_enabled else "",
+            webhook_url=settings.alert_webhook_url,
+            retry_attempts=settings.telegram_retry_attempts,
+            retry_delay_seconds=settings.telegram_retry_delay_seconds,
+            database_url=settings.database_url,
+        )
+        alert_result = await dispatcher.dispatch(signal)
+    return {"status": "signal_candidate", "symbol": payload.symbol, "timeframe": payload.timeframe,
+            "completed_candles": len(completed), "risk": {"approved": True,
+            "effective_risk_fraction": decision.effective_risk_fraction}, "signals": [signal],
+            "alert": ({"accepted": alert_result.accepted, "duplicate": alert_result.duplicate,
+            "telegram_sent": alert_result.telegram_sent, "webhook_sent": alert_result.webhook_sent,
+            "errors": list(alert_result.errors)} if alert_result else "not_configured"),
+            "execution_enabled": False}
+
+
 @app.get("/api/signals")
 async def signals() -> dict[str, Any]:
-    return {"status": "no_signal_feed", "signals": []}
+    return {"status": "scan_on_request", "signals": []}
 
 
 @app.get("/api/news")

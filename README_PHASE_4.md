@@ -44,3 +44,19 @@ docker run --rm -p 8000:8000 -e PORT=8000 -e TWELVE_DATA_API_KEY= -e OPENAI_API_
 ```
 
 Set real provider credentials as private host environment variables (never in the image or repository). Persist `/app/data` with a mounted volume when using the default SQLite journal database. The container runs as a non-root user and exposes `/healthz` for liveness; `/readyz` reports whether optional market-data and AI credentials are configured. A ready HTTP process does not mean provider connectivity has been validated. Broker execution remains disabled.
+
+
+## Signal scan API (paper/research only)
+
+`POST /api/signals/scan` evaluates one supported instrument using the configured
+read-only market-data provider. The request must include account equity and the
+quote-to-account conversion rate; these are never guessed. It discards the newest
+candle because it may still be forming, applies the 0.5% default trade-risk policy,
+and blocks alerts when the supplied daily/weekly loss or consecutive-loss limits
+are reached. If Telegram or a webhook is configured, an approved candidate is
+sent through the existing alert dispatcher. No journal trade is created automatically:
+the user must mark a setup as taken, and no broker order is placed.
+
+This is an on-demand scan, not an unattended scheduler. The caller is responsible
+for supplying accurate current account-risk figures and currency conversion. The
+baseline strategy is experimental and has not been validated for live trading.
