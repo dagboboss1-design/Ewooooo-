@@ -270,6 +270,9 @@ def test_dashboard_has_five_focused_pages_and_navigation():
     assert "function show(page)" in script
     assert "panel.hidden=panel.dataset.page!==page" in script
     assert "location.hash" in script
+    assert "if(page==='signals')" in script
+    assert "requestAnimationFrame" in script
+    assert "drawCandles(window.lastCandleRows)" in script
     assert '[data-page][hidden]' in Path("forex_quant/dashboard/static/styles.css").read_text()
 
 
