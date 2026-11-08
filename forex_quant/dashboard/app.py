@@ -358,7 +358,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
                 return {"answer":answer,"model":settings.pollinations_model,
                     "assistant_mode":"pollinations","provider":"pollinations",
                     "web_search_used":False,"citations":[],
-                    "market_data_status":candle_context.get("status","unavailable"),
+                    "market_data_status":candle_context.get("status","not_connected"),
                     "daily_bias":candle_context.get("daily_bias","UNAVAILABLE"),
                     "symbol":payload.symbol,"timeframe":payload.timeframe,
                     "chart_received":bool(image_url),"execution_enabled":False}

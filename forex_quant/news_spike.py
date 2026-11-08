@@ -81,3 +81,40 @@ def spread_guard(spread: float, maximum_allowed: float) -> bool:
 def impacted_instruments(currency: str) -> tuple[str, ...]:
     """Return the configured watchlist instruments associated with a currency."""
     return CURRENCY_IMPACT.get(currency.upper(), ())
+
+
+def session_spike_threshold(scores: Iterable[float], percentile: float = 99.0) -> float | None:
+    """Return a historical session percentile threshold; never infer one from live data alone."""
+    values = sorted(float(value) for value in scores)
+    if not values or any(not isfinite(value) or value < 0 for value in values):
+        return None
+    if not isfinite(float(percentile)) or not 0 < float(percentile) <= 100:
+        raise ValueError("percentile must be greater than 0 and at most 100")
+    # Nearest-rank percentile: deterministic and conservative for small samples.
+    rank = max(1, int((float(percentile) / 100.0) * len(values) + 0.999999))
+    return values[min(len(values), rank) - 1]
+
+
+def event_window_status(event_time, observed_time, window_seconds: int = 120) -> dict:
+    """Classify an observation relative to a scheduled event using UTC timestamps."""
+    from datetime import datetime, timezone
+    if window_seconds < 0:
+        raise ValueError("window_seconds cannot be negative")
+    def parse(value):
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            raise ValueError("timestamps must include a timezone")
+        return dt.astimezone(timezone.utc)
+    event = parse(event_time)
+    observed = parse(observed_time)
+    delta = (observed - event).total_seconds()
+    return {
+        "within_window": abs(delta) <= window_seconds,
+        "seconds_from_event": delta,
+        "window_seconds": window_seconds,
+        "window_start": (event.timestamp() - window_seconds),
+        "window_end": (event.timestamp() + window_seconds),
+    }

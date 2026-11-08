@@ -430,3 +430,21 @@ def test_ai_chat_uses_pollinations_when_worker_is_not_configured(monkeypatch):
     assert response.status_code == 200
     assert response.json()["provider"] == "pollinations"
     assert response.json()["web_search_used"] is False
+
+
+def test_phase5_session_percentile_and_event_window():
+    from forex_quant.news_spike import session_spike_threshold, event_window_status
+    assert session_spike_threshold([1,2,3,4,5], 99) == 5
+    assert session_spike_threshold([], 99) is None
+    result = event_window_status("2026-11-08T12:30:00Z", "2026-11-08T12:31:30Z")
+    assert result["within_window"] is True
+    assert result["seconds_from_event"] == 90
+    outside = event_window_status("2026-11-08T12:30:00Z", "2026-11-08T12:32:01Z")
+    assert outside["within_window"] is False
+
+
+def test_phase5_event_window_requires_timezone():
+    from forex_quant.news_spike import event_window_status
+    import pytest
+    with pytest.raises(ValueError):
+        event_window_status("2026-11-08T12:30:00", "2026-11-08T12:31:00Z")
