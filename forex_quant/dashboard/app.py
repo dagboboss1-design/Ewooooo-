@@ -849,3 +849,31 @@ async def paper_account_snapshot(payload: PaperAccountMarksRequest) -> dict[str,
         "open_positions": open_count, "execution_mode": "simulation_only",
         "execution_enabled": False,
     }
+
+
+@app.get("/api/paper/reconcile")
+async def paper_reconcile() -> dict[str, Any]:
+    """Check persisted paper journal rows against their simulated quantity ledger."""
+    records = [t for t in list_trades(get_settings().database_url) if t.get("source") == "paper"]
+    discrepancies = []
+    checked = 0
+    for trade in records:
+        checked += 1
+        try:
+            metadata = json.loads(trade.get("setup_text") or "{}")
+            original = float(metadata["quantity_units"])
+            remaining = float(metadata.get("remaining_quantity", original))
+            if not isfinite(original) or not isfinite(remaining) or original <= 0 or remaining < 0 or remaining > original:
+                raise ValueError("invalid original or remaining quantity")
+            if trade.get("status") == "open" and remaining <= 0:
+                raise ValueError("open journal row has no remaining quantity")
+            if trade.get("status") == "closed" and remaining > 1e-12:
+                raise ValueError("closed journal row retains open quantity")
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            discrepancies.append({"trade_id": trade["trade_id"], "reason": str(exc)})
+    return {
+        "status": "consistent" if not discrepancies else "discrepancies_found",
+        "checked_paper_records": checked, "discrepancies": discrepancies,
+        "execution_mode": "simulation_only", "execution_enabled": False,
+        "scope": "Internal paper journal quantity reconciliation only; no broker ledger is connected.",
+    }
