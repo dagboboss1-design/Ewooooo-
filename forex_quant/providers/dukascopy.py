@@ -42,7 +42,7 @@ class DukascopyClient:
             raise ValueError("hour must be 0..23")
         url = (f"{BASE}/{instrument}/{day.year}/{day.month-1:02d}/{day.day:02d}/"
                f"{hour:02d}h_ticks.bi5")
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url)
             if response.status_code == 404:
                 return pd.DataFrame(columns=["time","instrument","ask","bid","ask_volume","bid_volume","mid","spread","source"])
@@ -65,7 +65,8 @@ class DukascopyClient:
         now = datetime.now(timezone.utc)
         end_hour = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
         # Fetch a bounded recent window; the public archive can lag and may omit closed hours.
-        hours = [end_hour - timedelta(hours=i) for i in range(71, -1, -1)]
+        history_hours = 72 if timeframe == "H4" else 36
+        hours = [end_hour - timedelta(hours=i) for i in range(history_hours - 1, -1, -1)]
         semaphore = asyncio.Semaphore(5)
 
         async def load_hour(stamp):
@@ -92,8 +93,9 @@ class DukascopyClient:
                 .dropna())
         duration = pd.Timedelta(rules[timeframe])
         bars = bars[(bars.index + duration) <= pd.Timestamp(now)]
-        if len(bars) < min(30, outputsize):
-            raise LookupError(f"Only {len(bars)} completed {timeframe} bars are available; at least {min(30, outputsize)} are required.")
+        minimum_bars = 18 if timeframe == "H4" else min(30, outputsize)
+        if len(bars) < minimum_bars:
+            raise LookupError(f"Only {len(bars)} completed {timeframe} bars are available; at least {minimum_bars} are required.")
         bars = bars.tail(outputsize).reset_index()
         bars.columns = ["time", "open", "high", "low", "close"]
         bars["time"] = bars["time"].map(lambda value: value.isoformat())
