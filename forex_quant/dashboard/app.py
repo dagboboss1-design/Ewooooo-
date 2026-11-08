@@ -234,6 +234,7 @@ async def dashboard_status() -> dict[str, Any]:
         "ai_provider_priority": ["cloudflare_worker", "openai", "pollinations", "offline"],
         "ai_provider_configured": ("cloudflare_worker" if settings.cloudflare_worker_url else "openai" if settings.openai_api_key else "pollinations" if settings.pollinations_api_key else "offline"),
         "ai_providers": {"cloudflare_worker": bool(settings.cloudflare_worker_url), "openai": bool(settings.openai_api_key), "pollinations": bool(settings.pollinations_api_key)},
+        "ai_provider_health": _ai_provider_snapshot(settings),
         "signal_engine_connected": False,
         "news_feed_connected": False,
         "execution_enabled": False,
@@ -256,6 +257,63 @@ async def _cached_provider_call(key: tuple[Any, ...], ttl_seconds: int, loader):
     async with _PROVIDER_CACHE_LOCK:
         _PROVIDER_CACHE[key] = (time.monotonic(), value)
     return value
+
+
+
+
+_AI_PROVIDER_HEALTH: dict[str, dict[str, Any]] = {}
+_AI_ACTIVE_PROVIDER: str | None = None
+
+
+def _ai_provider_failure_detail(exc: Exception) -> str:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if status_code == 429:
+        return "Rate limited or account quota exhausted (HTTP 429)."
+    if status_code in (401, 403):
+        return f"Provider rejected authentication or permissions (HTTP {status_code})."
+    if status_code:
+        return f"Provider returned HTTP {status_code}."
+    if isinstance(exc, httpx.TimeoutException):
+        return "Provider request timed out."
+    if isinstance(exc, httpx.HTTPError):
+        return "Provider network request failed."
+    return f"Provider response could not be processed ({type(exc).__name__})."
+
+
+def _record_ai_provider(name: str, state: str, detail: str | None = None) -> None:
+    global _AI_ACTIVE_PROVIDER
+    now = datetime.now(timezone.utc).isoformat()
+    previous = _AI_PROVIDER_HEALTH.get(name, {})
+    record = {**previous, "state": state, "detail": detail, "last_attempt_at": now}
+    if state == "active":
+        record["last_success_at"] = now
+        _AI_ACTIVE_PROVIDER = name
+    _AI_PROVIDER_HEALTH[name] = record
+
+
+def _ai_provider_snapshot(settings: Settings) -> dict[str, Any]:
+    configured = {
+        "cloudflare_worker": bool(settings.cloudflare_worker_url),
+        "openai": bool(settings.openai_api_key),
+        "pollinations": bool(settings.pollinations_api_key),
+    }
+    providers = {}
+    for name, is_configured in configured.items():
+        previous = _AI_PROVIDER_HEALTH.get(name, {})
+        providers[name] = {
+            "configured": is_configured,
+            "state": previous.get("state", "not_tested" if is_configured else "not_configured"),
+            "detail": previous.get("detail") or ("Key or URL is configured; provider has not been tested yet." if is_configured else "No provider credentials configured."),
+            "last_attempt_at": previous.get("last_attempt_at"),
+            "last_success_at": previous.get("last_success_at"),
+        }
+    return {"active_provider": _AI_ACTIVE_PROVIDER, "providers": providers, "offline_available": True}
+
+
+@app.get("/api/ai/status")
+async def ai_provider_status() -> dict[str, Any]:
+    return _ai_provider_snapshot(get_settings())
 
 
 @app.get("/api/market")
@@ -338,6 +396,9 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
 @app.post("/api/ai/chat")
 async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
     settings = get_settings()
+    for provider_name, configured in (("cloudflare_worker", bool(settings.cloudflare_worker_url)), ("openai", bool(settings.openai_api_key)), ("pollinations", bool(settings.pollinations_api_key))):
+        if not configured:
+            _record_ai_provider(provider_name, "not_configured", "No provider credentials configured.")
     message = payload.message.strip()
     if not message and not payload.chart_image:
         raise HTTPException(status_code=422, detail="Please enter a trading question.")
@@ -360,7 +421,15 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         if settings.market_data_provider == "twelve_data":
             if not settings.twelve_data_api_key:
                 raise LookupError("Twelve Data API key is not configured.")
-            return await _cached_provider_call(("candles", "twelve_data", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count))
+            try:
+                return await _cached_provider_call(("candles", "twelve_data", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count))
+            except (httpx.HTTPError, LookupError, ValueError) as primary_error:
+                if tf == "D1":
+                    raise LookupError(f"Twelve Data daily candles unavailable; Dukascopy does not provide daily bars in this adapter. {str(primary_error)[:120]}") from primary_error
+                try:
+                    return await _cached_provider_call(("candles", "dukascopy_historical", payload.symbol, tf, count), 300, lambda: DukascopyClient().candles(payload.symbol.replace("/", ""), tf, count))
+                except (httpx.HTTPError, LookupError, ValueError, lzma.LZMAError) as backup_error:
+                    raise LookupError(f"Twelve Data and Dukascopy candles unavailable. {str(backup_error)[:120]}") from backup_error
         token = selected_oanda_token(settings)
         if not token or not settings.oanda_account_id:
             raise LookupError("OANDA credentials are not configured.")
@@ -413,6 +482,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
 
     # Primary: Cloudflare Worker. Keep Anthropic credentials inside the Worker.
     if settings.cloudflare_worker_url:
+        _record_ai_provider("cloudflare_worker", "checking", "Testing Cloudflare Worker request.")
         try:
             async with httpx.AsyncClient(timeout=60) as worker_client:
                 wr = await worker_client.post(settings.cloudflare_worker_url, json={
@@ -423,6 +493,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
             wd = wr.json()
             answer = wd.get("answer") or wd.get("output_text")
             if answer:
+                _record_ai_provider("cloudflare_worker", "active", "Cloudflare Worker answered successfully.")
                 return {"answer": answer, "model": wd.get("model", "cloudflare-worker"),
                     "assistant_mode": "cloudflare_worker", "provider": "cloudflare_worker",
                     "web_search_used": bool(wd.get("web_search_used", False)),
@@ -431,11 +502,12 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
                     "daily_bias": candle_context.get("daily_bias", "UNAVAILABLE"),
                     "symbol": payload.symbol, "timeframe": payload.timeframe,
                     "chart_received": bool(image_url), "execution_enabled": False}
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
-            pass
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            _record_ai_provider("cloudflare_worker", "unavailable", _ai_provider_failure_detail(exc))
 
     # Second provider: OpenAI. A 429 or other provider failure continues to the next fallback.
     if settings.openai_api_key:
+        _record_ai_provider("openai", "checking", "Testing OpenAI Responses API request.")
         try:
             async with httpx.AsyncClient(timeout=45) as client:
                 response = await client.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {settings.openai_api_key}"}, json={"model": settings.openai_model, "instructions": instructions, "input": [{"role": "user", "content": content}], "max_output_tokens": 1200})
@@ -443,15 +515,17 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
             data = response.json()
             answer = data.get("output_text") or "\\n".join(item.get("text", "") for output in data.get("output", []) for item in output.get("content", []) if item.get("type") == "output_text").strip()
             if answer:
+                _record_ai_provider("openai", "active", "OpenAI answered successfully.")
                 return {"answer": answer, "model": settings.openai_model, "assistant_mode": "openai", "provider": "openai",
                     "web_search_used": False, "citations": [], "market_data_status": candle_context.get("status"),
                     "daily_bias": candle_context.get("daily_bias"), "symbol": payload.symbol, "timeframe": payload.timeframe,
                     "chart_received": bool(image_url), "execution_enabled": False}
-        except (httpx.HTTPError, ValueError, KeyError, TypeError):
-            pass
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            _record_ai_provider("openai", "unavailable", _ai_provider_failure_detail(exc))
 
     # Third provider: Pollinations' OpenAI-compatible Chat Completions API.
     if settings.pollinations_api_key:
+        _record_ai_provider("pollinations", "checking", "Testing Pollinations API request.")
         try:
             user_content = message + "\\n\\nVerified market context: " + str(candle_context)
             if image_url:
@@ -467,6 +541,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
             pd = pr.json()
             answer = pd.get("choices", [{}])[0].get("message", {}).get("content")
             if answer:
+                _record_ai_provider("pollinations", "active", "Pollinations answered successfully.")
                 return {"answer":answer,"model":settings.pollinations_model,
                     "assistant_mode":"pollinations","provider":"pollinations",
                     "web_search_used":False,"citations":[],
@@ -474,8 +549,8 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
                     "daily_bias":candle_context.get("daily_bias","UNAVAILABLE"),
                     "symbol":payload.symbol,"timeframe":payload.timeframe,
                     "chart_received":bool(image_url),"execution_enabled":False}
-        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
-            pass
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+            _record_ai_provider("pollinations", "unavailable", _ai_provider_failure_detail(exc))
 
     answer = offline_trading_answer(message, payload.symbol, payload.timeframe, bool(payload.chart_image))
     return {"answer": answer, "model": "ewo-offline-guide", "assistant_mode": "offline",
@@ -485,7 +560,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         "symbol": payload.symbol, "timeframe": payload.timeframe,
         "chart_received": bool(payload.chart_image),
         "chart_analysis": "not_supported_offline" if payload.chart_image else None,
-        "execution_enabled": False}
+        "execution_enabled": False, "provider_diagnostics": _ai_provider_snapshot(settings)}
 
 @app.get("/api/journal")
 async def journal_list():
