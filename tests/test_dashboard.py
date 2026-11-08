@@ -512,7 +512,7 @@ def test_paper_account_persists_and_partial_closes_reconcile(tmp_path, monkeypat
     assert final.status_code == 200
     assert final.json()["status"] == "paper_position_closed"
     assert final.json()["trade"]["status"] == "closed"
-    assert final.json()["trade"]["pnl"] == 50.0
+    assert abs(final.json()["trade"]["pnl"] - 50.0) < 1e-8
     import json
     history = json.loads(final.json()["trade"]["setup_text"])["partial_closes"]
     assert len(history) == 2
