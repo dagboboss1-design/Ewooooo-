@@ -190,3 +190,8 @@ document.getElementById('refresh-paper-equity')?.addEventListener('click',async(
   box.textContent='Starting '+d.currency+' '+d.starting_balance.toFixed(2)+' · Realized '+d.realized_pnl.toFixed(2)+' · Unrealized '+d.unrealized_pnl.toFixed(2)+' · Fees '+d.fees.toFixed(2)+' · Equity '+d.equity.toFixed(2)+' · Open '+d.open_positions+' · PAPER ONLY';
  }catch(e){box.textContent='Equity not calculated: '+e.message;}
 });
+
+document.getElementById('run-paper-reconcile')?.addEventListener('click',async()=>{
+ const status=document.getElementById('paper-reconcile-status');status.textContent='Checking saved paper records…';
+ try{const r=await fetch('/api/paper/reconcile'),d=await r.json();if(!r.ok)throw Error(d.detail||'Reconciliation failed');status.textContent=d.status.toUpperCase()+' · '+d.checked_paper_records+' records checked · '+d.discrepancies.length+' discrepancies · internal paper ledger only.';}catch(e){status.textContent='Reconciliation unavailable: '+e.message;}
+});
