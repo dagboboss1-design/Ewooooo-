@@ -197,3 +197,17 @@ footer{color:#817b70;font-size:9px;line-height:1.5;padding:12px 4px;text-align:c
 .spike-intel-cell strong[data-direction="sell"]{color:#ff657a}
 .spike-intel-cell span{font-size:10px;color:#9aa5aa;line-height:1.4}
 @media(max-width:360px){.spike-intel-card{gap:8px;padding:11px}.spike-intel-cell strong{font-size:19px}}
+
+/* Premium AI provider status surface */
+.ai-panel{border-color:#80683d;background:linear-gradient(145deg,#1d1a14 0%,#111315 62%);box-shadow:0 14px 34px #0008,inset 0 1px #f2d18b18}
+.ai-provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 15px}
+.ai-provider{display:flex;flex-direction:column;gap:6px;min-width:0;padding:11px 12px;border:1px solid #51432d;border-radius:11px;background:linear-gradient(145deg,#201d17,#131516)}
+.ai-provider b{font-size:11px;color:#e9d7ad;letter-spacing:.02em}
+.ai-provider span{font-size:9px;letter-spacing:.1em;font-weight:800;color:#aaa397}
+.ai-provider span[data-state="configured"]{color:#d8b66c}.ai-provider span[data-state="active"]{color:#27d889}.ai-provider span[data-state="off"]{color:#a19b90}
+.ai-status-pill{border-color:#80683d;color:#e8ce91}
+.ai-panel .chat-log{background:#0b0d0e;border:1px solid #403726;border-radius:12px;padding:11px;min-height:130px}
+.ai-panel .chat-bubble.assistant{background:#1b1915;border-color:#5b492d}.ai-panel .chat-bubble.user{background:#272116;border-color:#80683d}
+.ai-panel .chat-compose textarea{min-height:58px;border-color:#675334;background:#0c0e0f}
+.ai-panel .chat-actions button,.ai-panel .upload-button{background:linear-gradient(135deg,#e8c775,#b98b3c);border-color:#f2d88e;color:#17130b;font-weight:800}
+@media(max-width:360px){.ai-provider-grid{gap:6px}.ai-provider{padding:9px}.ai-provider b{font-size:10px}}
