@@ -776,6 +776,15 @@ async def _build_news_spike_intelligence(events: list[dict[str, Any]], settings:
 
     currency = str(event.get("currency") or "").upper()
     if not currency:
+        country = str(event.get("country") or "").strip().lower()
+        currency = {
+            "united states": "USD", "us": "USD", "usa": "USD",
+            "euro area": "EUR", "european union": "EUR", "eu": "EUR",
+            "united kingdom": "GBP", "uk": "GBP", "great britain": "GBP",
+            "japan": "JPY", "australia": "AUD", "canada": "CAD",
+            "new zealand": "NZD", "switzerland": "CHF",
+        }.get(country, "")
+    if not currency:
         return {**base, "status": "missing_currency", "note": "The calendar did not identify the event currency."}
     affected = impacted_instruments(currency)
     fx_symbols = [symbol for symbol in affected if "/" in symbol and symbol not in {"XAU/USD", "XAG/USD", "BTC/USD"}]
@@ -806,7 +815,7 @@ async def _build_news_spike_intelligence(events: list[dict[str, Any]], settings:
 
     forecast = build_pre_news_forecast(currency, frames)
     status = forecast.get("status", "insufficient_data")
-    note = "DXY feed is not configured; no DXY value is fabricated."
+    note = "DXY feed is not configured; no DXY value is fabricated." if currency == "USD" else "Direction uses affected pairs; no unsupported market data is assumed."
     if errors:
         note += " Some market feeds were unavailable."
     return {

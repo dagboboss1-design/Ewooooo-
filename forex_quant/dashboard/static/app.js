@@ -76,7 +76,7 @@ async function sendMessage(){const message=input.value.trim();if(!message&&!char
 send.addEventListener('click',sendMessage);input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
 document.getElementById('voice-input').addEventListener('click',()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addBubble('Voice input is not supported by this browser. You can still type your question.','assistant');return;}const recognition=new SR();recognition.lang='en-US';recognition.interimResults=false;recognition.onresult=e=>{input.value+=(input.value?' ':'')+e.results[0][0].transcript;input.focus();};recognition.onerror=()=>addBubble('Microphone recognition failed. Check browser microphone permission.','assistant');recognition.start();});
 loadDashboard();loadJournal();loadNews();
-setInterval(loadNews,60000);setInterval(loadNews,300000);
+setInterval(loadNews,60000);
 function metric(value,suffix=''){return value===null||value===undefined?'—':Number(value).toFixed(2)+suffix;}
 function renderJournalAnalytics(a){
 const el=document.getElementById('journal-analytics');if(!el)return;

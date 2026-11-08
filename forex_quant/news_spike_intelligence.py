@@ -109,8 +109,28 @@ def build_pre_news_forecast(currency: str, frames: dict[str, pd.DataFrame]) -> d
     base_strength = mean(base_values)
     quote_strength = mean(quote_values)
     combined = max(-1.0, min(1.0, (base_strength - quote_strength) / 2.0))
-    aligned = sum(1 for value in scores.values() if (value["score"] * combined) > 0)
-    confluence = aligned / max(1, len(scores))
+    aligned_effects: list[float] = []
+    for symbol, value in scores.items():
+        score = value["score"]
+        if symbol == "XAU/USD" and currency == "USD":
+            effect = score if quote == "USD" else -score if base == "USD" else 0.0
+        elif "/" in symbol:
+            pair_base, pair_quote = symbol.split("/", 1)
+            effect = 0.0
+            if pair_base == base:
+                effect += score
+            if pair_quote == base:
+                effect -= score
+            if pair_base == quote:
+                effect -= score
+            if pair_quote == quote:
+                effect += score
+        else:
+            effect = 0.0
+        if effect:
+            aligned_effects.append(effect)
+    aligned = sum(1 for effect in aligned_effects if effect * combined > 0)
+    confluence = aligned / max(1, len(aligned_effects))
 
     if abs(combined) < 0.18 or confluence < 0.60:
         direction, status = "WAIT", "conflicting_or_weak_bias"
