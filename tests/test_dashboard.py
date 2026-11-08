@@ -476,3 +476,58 @@ def test_phase5_session_threshold_endpoint():
 def test_phase5_event_analysis_rejects_missing_history_shape():
     response = client.post("/api/news/event-analysis", json={"actual": 3, "forecast": 2, "historical_surprises": "bad"})
     assert response.status_code == 422
+
+
+def test_paper_account_persists_and_partial_closes_reconcile(tmp_path, monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    db_url = "sqlite:///" + str(tmp_path / "paper-account.db")
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(database_url=db_url))
+    configured = client.put("/api/paper/account", json={
+        "starting_balance": 10000, "currency": "USD", "spread": 0,
+        "slippage": 0, "commission_per_unit": 0,
+        "contract_specs": {"EUR/USD": {"contract_size": 1, "quote_to_account_rate": 1}}
+    })
+    assert configured.status_code == 200
+    assert configured.json()["execution_enabled"] is False
+    assert client.get("/api/paper/account").json()["account"]["currency"] == "USD"
+
+    opened = client.post("/api/paper/orders", json={
+        "symbol": "EUR/USD", "side": "BUY", "timeframe": "M15",
+        "entry": 1.1, "stop_loss": 1.095, "take_profit": 1.11,
+        "account_balance": 10000
+    })
+    assert opened.status_code == 201
+    trade_id = opened.json()["trade"]["trade_id"]
+
+    partial = client.post(f"/api/paper/positions/{trade_id}/partial-close", json={
+        "quantity": 4000, "exit_price": 1.105
+    })
+    assert partial.status_code == 200
+    assert partial.json()["close"]["remaining_quantity"] == 6000
+    assert partial.json()["execution_enabled"] is False
+
+    final = client.post(f"/api/paper/positions/{trade_id}/partial-close", json={
+        "quantity": 6000, "exit_price": 1.105
+    })
+    assert final.status_code == 200
+    assert final.json()["status"] == "paper_position_closed"
+    assert final.json()["trade"]["status"] == "closed"
+    assert final.json()["trade"]["pnl"] == 50.0
+    assert client.get("/api/paper/positions").json()["count"] == 0
+
+
+def test_paper_partial_close_requires_explicit_contract_specs(tmp_path, monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    db_url = "sqlite:///" + str(tmp_path / "paper-no-spec.db")
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(database_url=db_url))
+    opened = client.post("/api/paper/orders", json={
+        "symbol": "EUR/USD", "side": "BUY", "timeframe": "M15",
+        "entry": 1.1, "stop_loss": 1.095, "take_profit": 1.11,
+        "account_balance": 10000
+    })
+    trade_id = opened.json()["trade"]["trade_id"]
+    response = client.post(f"/api/paper/positions/{trade_id}/partial-close", json={
+        "quantity": 1000, "exit_price": 1.105
+    })
+    assert response.status_code == 409
+    assert "Configure the paper account" in response.json()["detail"]
