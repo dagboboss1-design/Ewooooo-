@@ -30,6 +30,14 @@
       <div class="daily-bias" id="daily-bias"><span>DAILY BIAS · D1</span><strong id="daily-bias-value">Calculating…</strong><small id="daily-bias-detail">Uses completed daily candles only; not a trade signal.</small></div>
       <div class="chart-wrap"><canvas id="candles" aria-label="Candlestick price chart"></canvas></div>
       <div class="chart-legend"><span><i class="bull"></i> Bullish</span><span><i class="bear"></i> Bearish</span><span id="chart-count">0 candles</span></div>
+      <section class="technical-analysis" id="technical-analysis" aria-live="polite">
+        <div class="technical-head"><div><p class="eyebrow">AI TRADER · TECHNICAL CONFLUENCE</p><h3>Five-rule market analysis</h3></div><span class="technical-tag" id="technical-source">WAITING FOR VERIFIED CANDLES</span></div>
+        <div class="technical-main"><strong id="technical-signal">WAIT</strong><span id="technical-bias">Bias · Neutral</span><span id="technical-votes">—</span></div>
+        <p class="technical-plan" id="technical-plan">Entry, stop and target appear only when the rules agree.</p>
+        <div class="technical-indicators" id="technical-indicators">RSI — · ATR — · EMA20 — · EMA50 —</div>
+        <ul class="technical-notes" id="technical-notes"><li>Analysis uses the selected chart instrument and timeframe.</li></ul>
+        <small class="technical-warning">Research only. No orders are placed. Volume is ignored when the feed does not supply meaningful volume.</small>
+      </section>
     </section>
     <div class="two-col" data-page="signals"><section id="signals" class="panel"><p class="eyebrow">SIGNAL ENGINE</p><h3>Risk-gated signal scan</h3><div class="muted small">Scan the selected chart instrument and timeframe. Account inputs are required; no values are guessed.</div>
       <div class="scan-form"><label>Account equity<input id="scan-equity" type="number" min="0.01" step="any" placeholder="e.g. 1000"></label><label>Quote → account conversion<input id="scan-rate" type="number" min="0.000001" step="any" placeholder="e.g. 1.0"></label><label>Daily loss so far (%)<input id="scan-daily-loss" type="number" min="0" max="99.99" step="0.01" value="0"></label><label>Weekly loss so far (%)<input id="scan-weekly-loss" type="number" min="0" max="99.99" step="0.01" value="0"></label><label>Consecutive losses<input id="scan-losses" type="number" min="0" step="1" value="0"></label><button id="run-scan" type="button">Scan selected market</button></div>
