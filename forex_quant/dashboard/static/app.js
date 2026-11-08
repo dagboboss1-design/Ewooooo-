@@ -75,7 +75,7 @@ upload.addEventListener('change',()=>{const file=upload.files&&upload.files[0];i
 async function sendMessage(){const message=input.value.trim();if(!message&&!chartData)return;addBubble((message||'Please analyse this chart.')+(chartData?' [Chart attached]':''),'user');input.value='';send.disabled=true;send.textContent='Thinking…';const pending=addBubble('Analysing your question…','assistant');try{const res=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:message||'Analyse this chart. Identify instrument/timeframe if visible, market structure, key levels and whether a setup is justified.',chart_image:chartData,symbol:state.symbol,timeframe:state.timeframe})});const data=await res.json();if(!res.ok)throw new Error(data.detail||'AI request failed');pending.textContent=data.answer;const meta=document.createElement('small');meta.className='analysis-meta';meta.textContent='DATA: '+String(data.market_data_status||'unknown').replaceAll('_',' ').toUpperCase()+' · D1 BIAS: '+String(data.daily_bias||'UNAVAILABLE')+' · '+String(data.symbol||state.symbol)+' / '+String(data.timeframe||state.timeframe);pending.appendChild(meta);addJournalAction(pending,data.answer);if('speechSynthesis'in window){const utterance=new SpeechSynthesisUtterance(data.answer);utterance.rate=1;window.speechSynthesis.cancel();window.speechSynthesis.speak(utterance);}chartData=null;upload.value='';document.getElementById('upload-name').textContent='No chart attached';}catch(err){pending.textContent=err.message;}finally{send.disabled=false;send.textContent='Send ↗';log.scrollTop=log.scrollHeight;}}
 send.addEventListener('click',sendMessage);input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
 document.getElementById('voice-input').addEventListener('click',()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addBubble('Voice input is not supported by this browser. You can still type your question.','assistant');return;}const recognition=new SR();recognition.lang='en-US';recognition.interimResults=false;recognition.onresult=e=>{input.value+=(input.value?' ':'')+e.results[0][0].transcript;input.focus();};recognition.onerror=()=>addBubble('Microphone recognition failed. Check browser microphone permission.','assistant');recognition.start();});
-loadDashboard();loadJournal();
+loadDashboard();loadJournal();loadNews();setInterval(loadNews,300000);
 function metric(value,suffix=''){return value===null||value===undefined?'—':Number(value).toFixed(2)+suffix;}
 function renderJournalAnalytics(a){
 const el=document.getElementById('journal-analytics');if(!el)return;
@@ -120,3 +120,22 @@ const tf=document.getElementById('journal-timeframes');if(tf){const rows=Object.
   const observer=new MutationObserver(()=>{const value=status.textContent;if(!value.includes(' · O '))baseStatus=value;});
   observer.observe(status,{childList:true,characterData:true,subtree:true});
 })();
+
+async function loadNews(){
+ const status=document.getElementById('news-status');
+ const events=document.getElementById('news-events');
+ const headlines=document.getElementById('news-headlines');
+ if(!status||!events||!headlines)return;
+ try{
+  const response=await fetch('/api/news');
+  const data=await response.json();
+  if(!response.ok)throw Error(data.detail||'News request failed');
+  status.textContent=data.status==='live'?'Provider updates received · Calendar: '+data.calendar_status+' · Headlines: '+data.headlines_status:'News providers unavailable · No events or headlines are being invented.';
+  events.innerHTML=(data.events||[]).length?(data.events||[]).map(e=>'<article class="news-item"><b>'+safe(e.title||'Untitled event')+'</b><small>'+safe(e.event_time||'Time not supplied')+' · '+safe(e.country||e.currency||'')+' · '+safe(e.importance||'')+'</small><small>Actual '+safe(e.actual??'—')+' · Forecast '+safe(e.forecast??'—')+' · Previous '+safe(e.previous??'—')+'</small></article>').join(''):'<div class="empty-state">No calendar events returned.</div>';
+  headlines.innerHTML=(data.headlines||[]).length?(data.headlines||[]).map(a=>{const url=String(a.url||'');const safeUrl=/^https?:\/\//i.test(url)?url:'#';return '<article class="news-item"><b><a href="'+safe(safeUrl)+'" target="_blank" rel="noopener noreferrer">'+safe(a.title||'Untitled headline')+'</a></b><small>'+safe(a.published_at||'Time not supplied')+' · '+safe(a.domain||a.source_country||'GDELT')+'</small></article>';}).join(''):'<div class="empty-state">No recent headlines returned.</div>';
+ }catch(error){
+  status.textContent='News unavailable: '+error.message+' · No sample events are shown.';
+  events.innerHTML='<div class="empty-state">Calendar feed unavailable.</div>';
+  headlines.innerHTML='<div class="empty-state">Headline feed unavailable.</div>';
+ }
+}
