@@ -1,7 +1,20 @@
 from __future__ import annotations
 
+import asyncio
+from collections import deque
+import os
+import time
+
 import httpx
 import pandas as pd
+
+
+# Twelve Data Basic allows 8 API credits/minute. Reserve one credit of headroom
+# and enforce a shared process-wide budget so the watchlist cannot flood the API.
+_REQUEST_TIMESTAMPS: deque[float] = deque()
+_REQUEST_LOCK = asyncio.Lock()
+_RATE_LIMITED_UNTIL = 0.0
+_CREDITS_PER_MINUTE = max(1, min(600, int(os.getenv("TWELVE_DATA_CREDITS_PER_MINUTE", "7"))))
 
 
 class TwelveDataClient:
@@ -16,11 +29,25 @@ class TwelveDataClient:
         self.timeout = timeout
 
     async def _get(self, endpoint: str, params: dict) -> dict:
+        global _RATE_LIMITED_UNTIL
+        async with _REQUEST_LOCK:
+            now = time.monotonic()
+            while _REQUEST_TIMESTAMPS and now - _REQUEST_TIMESTAMPS[0] >= 60:
+                _REQUEST_TIMESTAMPS.popleft()
+            if now < _RATE_LIMITED_UNTIL:
+                raise LookupError("Twelve Data rate limit cooldown is active; retry after the next minute.")
+            if len(_REQUEST_TIMESTAMPS) >= _CREDITS_PER_MINUTE:
+                raise LookupError("Local Twelve Data quota guard reached; preserving the remaining Basic-plan credits.")
+            _REQUEST_TIMESTAMPS.append(now)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(
                 f"{self.BASE_URL}/{endpoint}",
                 params={**params, "apikey": self.api_key},
             )
+            if response.status_code == 429:
+                async with _REQUEST_LOCK:
+                    _RATE_LIMITED_UNTIL = time.monotonic() + 60
+                raise LookupError("Twelve Data returned HTTP 429 (API credits exhausted); requests paused for 60 seconds.")
             response.raise_for_status()
             payload = response.json()
         if payload.get("status") == "error" or payload.get("code"):
