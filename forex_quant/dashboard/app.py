@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import json
+import lzma
 from math import isfinite
 import os
 import secrets
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from forex_quant.config import Settings
 from forex_quant.providers.oanda import OandaClient
 from forex_quant.providers.twelve_data import TwelveDataClient
+from forex_quant.providers.dukascopy import DukascopyClient
 from forex_quant.providers.calendar import BiquoteCalendarClient
 from forex_quant.providers.gdelt import GdeltClient
 from forex_quant.trade_journal import create_trade, list_trades, update_trade, performance_summary
@@ -306,7 +308,15 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
         if settings.market_data_provider == "twelve_data":
             if not settings.twelve_data_api_key:
                 raise HTTPException(status_code=503, detail="TWELVE_DATA_API_KEY is not configured.")
-            frame = await _cached_provider_call(("candles", "twelve_data", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(symbol, INTERVALS[timeframe], outputsize))
+            try:
+                frame = await _cached_provider_call(("candles", "twelve_data", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(symbol, INTERVALS[timeframe], outputsize))
+                return {"symbol": symbol, "timeframe": timeframe, "provider": "twelve_data", "data_status": "primary_feed", "candles": frame.to_dict(orient="records")}
+            except (httpx.HTTPError, LookupError, ValueError) as primary_error:
+                try:
+                    frame = await _cached_provider_call(("candles", "dukascopy_historical", symbol, timeframe, outputsize), 300, lambda: DukascopyClient().candles(symbol.replace("/", ""), timeframe, outputsize))
+                    return {"symbol": symbol, "timeframe": timeframe, "provider": "dukascopy_historical", "data_status": "historical_backup_not_live", "primary_error": str(primary_error)[:160], "candles": frame.to_dict(orient="records")}
+                except (httpx.HTTPError, LookupError, ValueError, lzma.LZMAError) as backup_error:
+                    raise HTTPException(status_code=502, detail=f"Twelve Data unavailable; Dukascopy backup could not provide fresh completed candles. WAIT. {str(backup_error)[:160]}")
         else:
             token = selected_oanda_token(settings)
             if not token or not settings.oanda_account_id:
