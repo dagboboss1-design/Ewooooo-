@@ -171,3 +171,13 @@ def test_journal_can_log_skipped_setup(tmp_path, monkeypatch):
     assert response.json()["trade"]["status"] == "skipped"
     summary = client.get("/api/journal").json()["analytics"]
     assert summary["skipped_setups"] == 1
+
+
+def test_chart_refresh_rejects_stale_responses_and_clears_failed_data():
+    from pathlib import Path
+    script = Path("forex_quant/dashboard/static/app.js").read_text()
+    assert "let candleRequestId=0" in script
+    assert "if(requestId!==candleRequestId)return" in script
+    assert "window.lastCandleRows=null" in script
+    assert "setInterval(loadCandles,60000)" in script
+    assert "setInterval(loadDailyBias,300000)" in script
