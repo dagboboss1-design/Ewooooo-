@@ -139,3 +139,40 @@ async function loadNews(){
   headlines.innerHTML='<div class="empty-state">Headline feed unavailable.</div>';
  }
 }
+
+async function loadPaperAccount(){
+ const status=document.getElementById('paper-account-status');if(!status)return;
+ try{
+  const [ar,pr]=await Promise.all([fetch('/api/paper/account'),fetch('/api/paper/positions')]);
+  const account=await ar.json(),positions=await pr.json();
+  if(account.configured&&account.account){
+   const a=account.account;
+   document.getElementById('paper-balance').value=a.starting_balance;
+   document.getElementById('paper-currency').value=a.currency;
+   document.getElementById('paper-spread').value=a.spread;
+   document.getElementById('paper-slippage').value=a.slippage;
+   document.getElementById('paper-commission').value=a.commission_per_unit;
+   document.getElementById('paper-contracts').value=JSON.stringify(a.contract_specs,null,2);
+   status.textContent='Paper account configured · '+a.currency+' · simulation only.';
+  }else status.textContent='Not configured. Enter your own account values; no balance or contract size is assumed.';
+  const box=document.getElementById('paper-positions');
+  box.innerHTML=(positions.positions||[]).length?(positions.positions||[]).map(p=>'<article class="journal-trade"><b>'+safe(p.symbol)+' · '+safe(p.side)+'</b><small>Entry '+p.entry+' · Remaining quantity '+(JSON.parse(p.setup_text||'{}').remaining_quantity??JSON.parse(p.setup_text||'{}').quantity_units??'—')+'</small><div class="journal-close"><input type="number" step="any" min="0.00000001" placeholder="Close quantity" data-pqty><input type="number" step="any" min="0.00000001" placeholder="Exit price" data-pexit><button data-pclose="'+p.trade_id+'">Partial / full close</button></div></article>').join(''):'<small>No open paper positions.</small>';
+  box.querySelectorAll('[data-pclose]').forEach(button=>button.onclick=async()=>{
+   const card=button.closest('.journal-trade'),quantity=Number(card.querySelector('[data-pqty]').value),exit_price=Number(card.querySelector('[data-pexit]').value);
+   if(!(quantity>0&&exit_price>0)){alert('Enter a positive quantity and simulated exit price.');return;}
+   button.disabled=true;try{const r=await fetch('/api/paper/positions/'+button.dataset.pclose+'/partial-close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quantity,exit_price})});const d=await r.json();if(!r.ok)throw Error(d.detail||'Close rejected');loadPaperAccount();loadJournal();}catch(e){alert(e.message);button.disabled=false;}
+  });
+ }catch(e){status.textContent='Paper account unavailable: '+e.message;}
+}
+document.getElementById('save-paper-account')?.addEventListener('click',async()=>{
+ const status=document.getElementById('paper-account-status');
+ try{
+  const contract_specs=JSON.parse(document.getElementById('paper-contracts').value||'{}');
+  const payload={starting_balance:Number(document.getElementById('paper-balance').value),currency:document.getElementById('paper-currency').value,spread:Number(document.getElementById('paper-spread').value),slippage:Number(document.getElementById('paper-slippage').value),commission_per_unit:Number(document.getElementById('paper-commission').value),contract_specs};
+  const r=await fetch('/api/paper/account',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),d=await r.json();
+  if(!r.ok)throw Error(d.detail||'Account settings rejected');
+  status.textContent='Paper account saved · '+d.account.currency+' · live execution remains OFF.';
+  loadPaperAccount();
+ }catch(e){status.textContent='Could not save paper account: '+e.message;}
+});
+loadPaperAccount();
