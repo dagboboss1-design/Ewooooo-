@@ -207,9 +207,9 @@ async def readyz() -> dict[str, Any]:
     """Readiness/configuration probe; missing optional credentials do not crash startup."""
     settings = get_settings()
     market_configured = (
-        bool(settings.twelve_data_api_key)
-        if settings.market_data_provider == "twelve_data"
-        else bool(settings.oanda_account_id and selected_oanda_token(settings))
+        settings.market_data_provider == "dukascopy"
+        or bool(settings.twelve_data_api_key)
+        or bool(settings.oanda_account_id and selected_oanda_token(settings))
     )
     return {
         "status": "ready",
@@ -227,7 +227,7 @@ async def dashboard_config() -> dict[str, Any]:
 @app.get("/api/dashboard/status")
 async def dashboard_status() -> dict[str, Any]:
     settings = get_settings()
-    connected = bool(settings.twelve_data_api_key) if settings.market_data_provider == "twelve_data" else bool(settings.oanda_account_id and selected_oanda_token(settings))
+    connected = settings.market_data_provider == "dukascopy" or bool(settings.twelve_data_api_key) or bool(settings.oanda_account_id and selected_oanda_token(settings))
     return {
         "status": "credentials_configured" if connected else "awaiting_provider_credentials",
         "market_data_provider": settings.market_data_provider,
@@ -321,9 +321,9 @@ async def ai_provider_status() -> dict[str, Any]:
 @app.get("/api/market")
 async def market() -> dict[str, Any]:
     settings = get_settings()
-    if settings.market_data_provider == "twelve_data":
+    if settings.market_data_provider in {"dukascopy", "twelve_data"}:
         if not settings.twelve_data_api_key:
-            return {"status": "awaiting_provider_credentials", "provider": "twelve_data", "as_of": None, "quotes": [], "unavailable": [{"symbol": a["symbol"], "reason": "TWELVE_DATA_API_KEY is not configured."} for a in ASSETS]}
+            return {"status": "historical_archive_available_no_live_quotes", "provider": "dukascopy", "as_of": None, "quotes": [], "unavailable": [{"symbol": a["symbol"], "reason": "Dukascopy public archive supplies historical ticks/candles, not a guaranteed live quote stream. Configure Twelve Data for live quote fallback."} for a in ASSETS]}
         client = TwelveDataClient(settings.twelve_data_api_key)
         quotes, unavailable = [], []
         priority_quotes = {"EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD"}
@@ -340,7 +340,7 @@ async def market() -> dict[str, Any]:
                 quotes.append(quote)
             except (httpx.HTTPError, LookupError, ValueError) as exc:
                 unavailable.append({"symbol": asset["symbol"], "reason": str(exc)[:240]})
-        return {"status": "live" if quotes else "no_verified_quotes", "provider": "twelve_data", "as_of": max((q["time"] for q in quotes if q.get("time")), default=None), "quotes": quotes, "unavailable": unavailable}
+        return {"status": "live" if quotes else "no_verified_quotes", "provider": "twelve_data_backup" if settings.market_data_provider == "dukascopy" else "twelve_data", "primary_provider": "dukascopy" if settings.market_data_provider == "dukascopy" else "twelve_data", "as_of": max((q["time"] for q in quotes if q.get("time")), default=None), "quotes": quotes, "unavailable": unavailable}
 
     token = selected_oanda_token(settings)
     if not token or not settings.oanda_account_id:
@@ -371,18 +371,19 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
         raise HTTPException(status_code=400, detail="outputsize must be between 1 and 500.")
     settings = get_settings()
     try:
-        if settings.market_data_provider == "twelve_data":
+        if settings.market_data_provider == "dukascopy":
+            try:
+                frame = await _cached_provider_call(("candles", "dukascopy_historical", symbol, timeframe, outputsize), 300, lambda: DukascopyClient().candles(symbol.replace("/", ""), timeframe, outputsize))
+                return {"symbol": symbol, "timeframe": timeframe, "provider": "dukascopy", "data_status": "historical_archive_not_live", "candles": frame.to_dict(orient="records")}
+            except (httpx.HTTPError, LookupError, ValueError, lzma.LZMAError) as primary_error:
+                if settings.twelve_data_api_key:
+                    frame = await _cached_provider_call(("candles", "twelve_data_backup", symbol, timeframe, outputsize), 900, lambda: TwelveDataClient(settings.twelve_data_api_key, timeout=8).candles(symbol, INTERVALS[timeframe], outputsize))
+                    return {"symbol": symbol, "timeframe": timeframe, "provider": "twelve_data_backup", "data_status": "backup_feed", "primary_error": str(primary_error)[:160], "candles": frame.to_dict(orient="records")}
+                raise HTTPException(status_code=502, detail=f"Dukascopy historical candles unavailable and no Twelve Data backup key is configured. WAIT. {str(primary_error)[:160]}")
+        elif settings.market_data_provider == "twelve_data":
             if not settings.twelve_data_api_key:
                 raise HTTPException(status_code=503, detail="TWELVE_DATA_API_KEY is not configured.")
-            try:
-                frame = await _cached_provider_call(("candles", "twelve_data", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key, timeout=8).candles(symbol, INTERVALS[timeframe], outputsize))
-                return {"symbol": symbol, "timeframe": timeframe, "provider": "twelve_data", "data_status": "primary_feed", "candles": frame.to_dict(orient="records")}
-            except (httpx.HTTPError, LookupError, ValueError) as primary_error:
-                try:
-                    frame = await _cached_provider_call(("candles", "dukascopy_historical", symbol, timeframe, outputsize), 300, lambda: DukascopyClient().candles(symbol.replace("/", ""), timeframe, outputsize))
-                    return {"symbol": symbol, "timeframe": timeframe, "provider": "dukascopy_historical", "data_status": "historical_backup_not_live", "primary_error": str(primary_error)[:160], "candles": frame.to_dict(orient="records")}
-                except (httpx.HTTPError, LookupError, ValueError, lzma.LZMAError) as backup_error:
-                    raise HTTPException(status_code=502, detail=f"Twelve Data unavailable; Dukascopy backup could not provide fresh completed candles. WAIT. {str(backup_error)[:160]}")
+            frame = await _cached_provider_call(("candles", "twelve_data", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key, timeout=8).candles(symbol, INTERVALS[timeframe], outputsize))
         else:
             token = selected_oanda_token(settings)
             if not token or not settings.oanda_account_id:
@@ -448,18 +449,20 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Unsupported analysis instrument.")
     candle_context = {"symbol": payload.symbol, "selected_timeframe": payload.timeframe, "provider": settings.market_data_provider, "daily_bias": "UNAVAILABLE", "daily_candles": [], "entry_candles": []}
     async def get_analysis_candles(tf: str, count: int):
+        if settings.market_data_provider == "dukascopy":
+            if tf != "D1":
+                try:
+                    return await _cached_provider_call(("candles", "dukascopy_historical", payload.symbol, tf, count), 300, lambda: DukascopyClient().candles(payload.symbol.replace("/", ""), tf, count))
+                except (httpx.HTTPError, LookupError, ValueError, lzma.LZMAError) as primary_error:
+                    if not settings.twelve_data_api_key:
+                        raise LookupError(f"Dukascopy historical candles unavailable; no Twelve Data backup key is configured. {str(primary_error)[:120]}") from primary_error
+            if not settings.twelve_data_api_key:
+                raise LookupError("D1 context requires the optional Twelve Data backup key; Dukascopy adapter currently supports intraday bars only.")
+            return await _cached_provider_call(("candles", "twelve_data_backup", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count))
         if settings.market_data_provider == "twelve_data":
             if not settings.twelve_data_api_key:
                 raise LookupError("Twelve Data API key is not configured.")
-            try:
-                return await _cached_provider_call(("candles", "twelve_data", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count))
-            except (httpx.HTTPError, LookupError, ValueError) as primary_error:
-                if tf == "D1":
-                    raise LookupError(f"Twelve Data daily candles unavailable; Dukascopy does not provide daily bars in this adapter. {str(primary_error)[:120]}") from primary_error
-                try:
-                    return await _cached_provider_call(("candles", "dukascopy_historical", payload.symbol, tf, count), 300, lambda: DukascopyClient().candles(payload.symbol.replace("/", ""), tf, count))
-                except (httpx.HTTPError, LookupError, ValueError, lzma.LZMAError) as backup_error:
-                    raise LookupError(f"Twelve Data and Dukascopy candles unavailable. {str(backup_error)[:120]}") from backup_error
+            return await _cached_provider_call(("candles", "twelve_data", payload.symbol, tf, count), 21600 if tf == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[tf], count))
         token = selected_oanda_token(settings)
         if not token or not settings.oanda_account_id:
             raise LookupError("OANDA credentials are not configured.")
@@ -500,7 +503,7 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
         candle_context["entry_candles"] = completed_daily[-80:]
         candle_context["entry_data_source"] = candle_context.get("daily_data_source", "unavailable")
 
-    market_credentials_configured = (bool(settings.twelve_data_api_key) if settings.market_data_provider == "twelve_data" else bool(settings.oanda_account_id and selected_oanda_token(settings)))
+    market_credentials_configured = (settings.market_data_provider == "dukascopy" or bool(settings.twelve_data_api_key) if settings.market_data_provider in {"dukascopy", "twelve_data"} else bool(settings.oanda_account_id and selected_oanda_token(settings)))
     candle_context["status"] = ("verified_candles_loaded" if candle_context["entry_candles"] else "unavailable" if market_credentials_configured else "not_connected")
     # Reuse the same verified candles for the indicator toolkit. This brings
     # the supplied RSI/MACD/Bollinger/ATR/EMA confluence into the existing
@@ -727,16 +730,21 @@ async def scan_signal(payload: SignalScanRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Unsupported signal instrument.")
     settings = get_settings()
     try:
-        if settings.market_data_provider == "twelve_data":
+        if settings.market_data_provider == "dukascopy" and payload.timeframe != "D1":
+            try:
+                frame = await DukascopyClient().candles(payload.symbol.replace("/", ""), payload.timeframe, 120)
+            except (httpx.HTTPError, LookupError, ValueError, lzma.LZMAError) as primary_error:
+                if not settings.twelve_data_api_key:
+                    raise HTTPException(status_code=503, detail=f"Dukascopy history unavailable; optional Twelve Data backup key is not configured. {str(primary_error)[:140]}")
+                frame = await TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[payload.timeframe], 120)
+        elif settings.market_data_provider in {"dukascopy", "twelve_data"}:
             if not settings.twelve_data_api_key:
-                raise HTTPException(status_code=503, detail="TWELVE_DATA_API_KEY is not configured.")
-            frame = await TwelveDataClient(settings.twelve_data_api_key).candles(
-                payload.symbol, INTERVALS[payload.timeframe], 120
-            )
+                raise HTTPException(status_code=503, detail="This timeframe requires the optional Twelve Data backup key.")
+            frame = await TwelveDataClient(settings.twelve_data_api_key).candles(payload.symbol, INTERVALS[payload.timeframe], 120)
         else:
             token = selected_oanda_token(settings)
             if not token or not settings.oanda_account_id:
-                raise HTTPException(status_code=503, detail="OANDA credentials are not configured.")
+                raise HTTPException(status_code=503, detail="Optional OANDA credentials are not configured.")
             frame = await OandaClient(token, settings.oanda_environment).candles(
                 payload.symbol.replace("/", "_"), "D" if payload.timeframe == "D1" else payload.timeframe, 120
             )
@@ -944,14 +952,16 @@ async def _build_news_spike_intelligence(events: list[dict[str, Any]], settings:
     errors: list[str] = []
     for symbol in selected:
         try:
-            if settings.market_data_provider == "twelve_data":
+            if settings.market_data_provider == "dukascopy":
+                loader = lambda symbol=symbol: DukascopyClient().candles(symbol.replace("/", ""), "M15", 120)
+            elif settings.market_data_provider == "twelve_data":
                 if not settings.twelve_data_api_key:
                     raise LookupError("Twelve Data key is not configured.")
                 loader = lambda symbol=symbol: TwelveDataClient(settings.twelve_data_api_key).candles(symbol, "15min", 120)
             else:
                 token = selected_oanda_token(settings)
                 if not token or not settings.oanda_account_id:
-                    raise LookupError("OANDA market-data credentials are not configured.")
+                    raise LookupError("Optional OANDA credentials are not configured.")
                 loader = lambda symbol=symbol: OandaClient(token, settings.oanda_environment).candles(symbol.replace("/", "_"), "M15", 120)
             frames[symbol] = await _cached_provider_call(
                 ("news_spike_m15", settings.market_data_provider, symbol), 900, loader
