@@ -22,6 +22,7 @@ from forex_quant.trade_journal import create_trade, list_trades, update_trade, p
 from forex_quant.signals import generate_signal, RiskPolicy
 from forex_quant.alerts import AlertDispatcher
 from forex_quant.news_spike import tick_spike_score, spread_guard, impacted_instruments, session_spike_threshold
+from forex_quant.paper_trading import PaperOrder, PaperTradingAdapter
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = [
@@ -70,6 +71,24 @@ class SignalScanRequest(BaseModel):
     weekly_loss_fraction: float = Field(default=0, ge=0, lt=1)
     consecutive_losses: int = Field(default=0, ge=0)
     kill_switch: bool = False
+
+
+class PaperOrderRequest(BaseModel):
+    symbol: str = Field(min_length=2, max_length=20)
+    side: str = Field(pattern="^(BUY|SELL)$")
+    timeframe: str = Field(default="M15", pattern="^(M5|M15|M30|H1|H4|D1)$")
+    entry: float = Field(gt=0)
+    stop_loss: float = Field(gt=0)
+    take_profit: float = Field(gt=0)
+    account_balance: float = Field(gt=0)
+    daily_loss_fraction: float = Field(default=0, ge=0, lt=1)
+    weekly_loss_fraction: float = Field(default=0, ge=0, lt=1)
+    consecutive_losses: int = Field(default=0, ge=0)
+    kill_switch: bool = False
+
+
+class PaperCloseRequest(BaseModel):
+    exit_price: float = Field(gt=0)
 
 
 class ChatRequest(BaseModel):
@@ -424,6 +443,59 @@ async def journal_update(trade_id: str, payload: JournalUpdate):
     if trade is None:
         raise HTTPException(status_code=404, detail="Journal trade not found.")
     return {"trade": trade}
+
+@app.post("/api/paper/orders", status_code=201)
+async def paper_order_create(payload: PaperOrderRequest) -> dict[str, Any]:
+    """Create a simulated paper fill and persist it to the trade journal."""
+    symbol = payload.symbol.strip().upper()
+    if symbol not in {a["symbol"] for a in ASSETS if a["symbol"] != "DXY"}:
+        raise HTTPException(status_code=400, detail="Unsupported paper-trading instrument.")
+    result = PaperTradingAdapter().submit(PaperOrder(**payload.model_dump()))
+    if not result.accepted:
+        raise HTTPException(status_code=422, detail={"reason": result.reason, "execution_mode": "simulation_only"})
+    metadata = json.dumps({
+        "paper_order_id": result.order_id,
+        "quantity_units": result.units,
+        "risk_amount": result.risk_amount,
+        "execution_mode": result.execution_mode,
+        "quantity_note": "Generic simulation units only; not broker-ready lots or account-currency P&L.",
+    })
+    trade = create_trade(get_settings().database_url, {
+        "symbol": result.symbol, "side": result.side, "timeframe": payload.timeframe,
+        "entry": result.entry, "stop_loss": result.stop_loss, "take_profit": result.take_profit,
+        "exit_price": None, "pnl": None, "status": "open", "source": "paper",
+        "setup_text": metadata, "notes": "Simulated paper fill; no broker order was placed.",
+    })
+    return {"status": "paper_filled", "execution_mode": "simulation_only",
+            "execution_enabled": False, "paper_order": result.to_dict(), "trade": trade}
+
+
+@app.get("/api/paper/positions")
+async def paper_positions() -> dict[str, Any]:
+    """List only open journal records created by the paper adapter."""
+    trades = [t for t in list_trades(get_settings().database_url)
+              if t.get("source") == "paper" and t.get("status") == "open"]
+    return {"execution_mode": "simulation_only", "execution_enabled": False,
+            "positions": trades, "count": len(trades)}
+
+
+@app.post("/api/paper/positions/{trade_id}/close")
+async def paper_position_close(trade_id: str, payload: PaperCloseRequest) -> dict[str, Any]:
+    """Close a paper journal position at a supplied simulated exit price."""
+    existing = next((t for t in list_trades(get_settings().database_url)
+                     if t.get("trade_id") == trade_id), None)
+    if existing is None or existing.get("source") != "paper":
+        raise HTTPException(status_code=404, detail="Paper position not found.")
+    if existing.get("status") != "open":
+        raise HTTPException(status_code=409, detail="Paper position is not open.")
+    trade = update_trade(get_settings().database_url, trade_id, {
+        "exit_price": payload.exit_price, "status": "closed",
+        "notes": (existing.get("notes", "") + " Closed in paper simulation; no broker order was placed.").strip(),
+    })
+    return {"status": "paper_closed", "execution_mode": "simulation_only",
+            "execution_enabled": False, "trade": trade,
+            "pnl_note": "Price exit is journaled; monetary P&L is not calculated until contract and account-currency specifications are configured."}
+
 
 @app.post("/api/signals/scan")
 async def scan_signal(payload: SignalScanRequest) -> dict[str, Any]:
