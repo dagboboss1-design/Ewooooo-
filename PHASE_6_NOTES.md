@@ -6,6 +6,7 @@
 - Existing risk gates remain in force: 0.5% initial trade risk, 2% daily loss limit, 5% weekly loss limit, three-consecutive-loss pause and kill switch.
 - Persistent paper-account configuration stored in the application's database.
 - Dashboard settings for starting balance, account currency, spread, slippage, commission and explicit per-symbol contract specifications.
+- Manual paper-order form with BUY/SELL, timeframe, entry/stop/target, account equity and existing daily/weekly/loss-streak/kill-switch risk gates. The form remains disabled until the paper account is configured.
 - Paper position listing and partial/full simulated close controls.
 - Simulated entry fills apply configured spread/slippage; entry and exit commissions are accounted for on both sides when the symbol conversion is configured.
 - Partial-close history, remaining quantity, cumulative realized account-currency P&L and fees are persisted with the paper journal record.
@@ -23,7 +24,9 @@ Open Settings → Paper account. Enter the starting paper balance and account cu
 
 Spread, slippage and commission are user-configurable and default to zero only as an explicit input shown in the form; they are not live broker cost estimates. Do not copy a broker's lot size into contract_size without checking its instrument contract definition.
 
-The paper-account snapshot endpoint requires mark prices keyed by paper trade ID. Prices must be supplied from a verified market-data source; the server does not invent them.
+The paper-account snapshot endpoint requires mark prices keyed by paper trade ID. Enter them in the dashboard from a verified market-data source; the server does not invent them.
+
+The dashboard and API are still on the development branch. Do not expose the unauthenticated development dashboard to the public internet; authentication and deployment hardening are separate work.
 
 ## Important limits
 
