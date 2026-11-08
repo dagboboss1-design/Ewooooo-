@@ -1,17 +1,18 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-
     market_data_provider: str = "twelve_data"
     twelve_data_api_key: str = ""
-    twelve_data_symbols: str = (
-        "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,EUR/GBP,AUD/NZD,"
-        "XAU/USD,XAG/USD,BTC/USD"
-    )
+    twelve_data_symbols: str = "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,EUR/GBP,AUD/NZD,XAU/USD,XAG/USD,BTC/USD"
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    telegram_alerts_enabled: bool = True
+    telegram_retry_attempts: int = 3
+    telegram_retry_delay_seconds: float = 1.0
+    alert_webhook_url: str = ""
     oanda_environment: str = "practice"
     oanda_practice_token: str = ""
     oanda_live_token: str = ""
@@ -35,5 +36,7 @@ class Settings(BaseSettings):
             raise ValueError("OANDA_ENVIRONMENT must be practice or live")
         if self.market_data_provider not in {"twelve_data", "oanda"}:
             raise ValueError("MARKET_DATA_PROVIDER must be twelve_data or oanda")
+        if self.telegram_retry_attempts < 1 or self.telegram_retry_delay_seconds < 0:
+            raise ValueError("Telegram retry settings are invalid")
         if self.live_trading:
             raise ValueError("Live order execution is not implemented in Phase 4")

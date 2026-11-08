@@ -1,19 +1,19 @@
 # Phase 3 — Alerts
 
-Use the dispatcher to send a complete Phase 2 signal to Telegram, an outbound webhook, or both.
+The dispatcher sends complete Phase 2 signals to Telegram, an outbound webhook, or both.
+Configure Telegram credentials and the optional backup URL only in private deployment
+settings. Never commit real credentials.
 
-```python
-from forex_quant.alerts import AlertDispatcher
+Delivery retries transient HTTP and timeout failures with exponential backoff
+(1s, 2s, ... by default). Successful destinations are remembered separately, so a retry
+after partial success does not resend to a destination that already accepted the alert.
+Identical signal identities are deduplicated for 60 seconds after delivery. Telegram sends
+are serialized with a one-second minimum interval.
 
-dispatcher = AlertDispatcher(
-    telegram_bot_token="read-from-environment",
-    telegram_chat_id="read-from-environment",
-    webhook_url="https://your-service.example/alerts",
-)
-result = await dispatcher.dispatch(signal.to_dict())
-```
+Environment settings: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ALERTS_ENABLED,
+TELEGRAM_RETRY_ATTEMPTS, TELEGRAM_RETRY_DELAY_SECONDS, and optional ALERT_WEBHOOK_URL.
 
-The dispatcher deduplicates identical signal identities for 60 seconds by default and
-serializes Telegram sends with a one-second minimum interval. Inject an `httpx.AsyncClient`
-for tests or managed connection lifecycles. This sends notifications only; it never places
-orders. Keep credentials outside source control.
+Recovery limitation: retry and deduplication state currently lives in process memory.
+It does not survive a restart and is not a durable queue. A persistent database-backed
+outbox and worker are still required for recovery after a host restart or prolonged outage.
+These alerts are notifications only; they never place orders.
