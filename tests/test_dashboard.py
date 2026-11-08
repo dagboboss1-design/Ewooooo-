@@ -104,6 +104,7 @@ def test_daily_timeframe_maps_to_provider_interval(monkeypatch):
 def test_ai_chat_uses_daily_and_selected_timeframe_candles(monkeypatch):
     import pandas as pd
     from forex_quant.dashboard import app as dashboard_module
+    dashboard_module._PROVIDER_CACHE.clear()
     class FakeProvider:
         def __init__(self, key): pass
         async def candles(self, symbol, interval, outputsize):
