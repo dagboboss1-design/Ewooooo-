@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ from pydantic import BaseModel, Field, ConfigDict
 from forex_quant.config import Settings
 from forex_quant.providers.oanda import OandaClient
 from forex_quant.providers.twelve_data import TwelveDataClient
+from forex_quant.providers.calendar import BiquoteCalendarClient
+from forex_quant.providers.gdelt import GdeltClient
 from forex_quant.trade_journal import create_trade, list_trades, update_trade, performance_summary
 from forex_quant.signals import generate_signal, RiskPolicy
 from forex_quant.alerts import AlertDispatcher
@@ -404,4 +407,36 @@ async def signals() -> dict[str, Any]:
 
 @app.get("/api/news")
 async def news() -> dict[str, Any]:
-    return {"status": "no_news_feed", "events": []}
+    """Fetch calendar events and recent FX-related headlines; report provider failures separately."""
+    settings = get_settings()
+    calendar_events: list[dict[str, Any]] = []
+    headlines: list[dict[str, Any]] = []
+    errors: dict[str, str] = {}
+
+    try:
+        calendar = await BiquoteCalendarClient(settings.biquote_calendar_url).upcoming(
+            importance=settings.biquote_importance,
+            countries=settings.biquote_countries,
+        )
+        calendar_events = json.loads(calendar.to_json(orient="records", date_format="iso"))
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        errors["calendar"] = str(exc)[:240]
+
+    try:
+        articles = await GdeltClient(settings.gdelt_doc_url).articles(
+            query=settings.gdelt_query,
+            lookback_minutes=settings.gdelt_lookback_minutes,
+        )
+        headlines = json.loads(articles.to_json(orient="records", date_format="iso"))
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        errors["headlines"] = str(exc)[:240]
+
+    connected = bool(calendar_events or headlines)
+    return {
+        "status": "live" if connected else "unavailable",
+        "calendar_status": "live" if calendar_events else ("empty" if "calendar" not in errors else "unavailable"),
+        "headlines_status": "live" if headlines else ("empty" if "headlines" not in errors else "unavailable"),
+        "events": calendar_events,
+        "headlines": headlines,
+        "errors": errors,
+    }
