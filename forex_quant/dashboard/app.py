@@ -227,11 +227,13 @@ async def dashboard_config() -> dict[str, Any]:
 @app.get("/api/dashboard/status")
 async def dashboard_status() -> dict[str, Any]:
     settings = get_settings()
-    connected = settings.market_data_provider == "dukascopy" or bool(settings.twelve_data_api_key) or bool(settings.oanda_account_id and selected_oanda_token(settings))
+    live_connected = bool(settings.twelve_data_api_key) if settings.market_data_provider in {"dukascopy", "twelve_data"} else bool(settings.oanda_account_id and selected_oanda_token(settings))
+    historical_available = settings.market_data_provider == "dukascopy"
     return {
-        "status": "credentials_configured" if connected else "awaiting_provider_credentials",
+        "status": "live_provider_key_configured" if live_connected else ("historical_archive_only" if historical_available else "awaiting_provider_credentials"),
         "market_data_provider": settings.market_data_provider,
-        "market_data_connected": connected,
+        "market_data_connected": live_connected,
+        "historical_data_available": historical_available,
         "ai_chat_configured": bool(settings.cloudflare_worker_url or settings.pollinations_api_key or settings.openai_api_key),
         "ai_provider_priority": ["cloudflare_worker", "openai", "pollinations", "offline"],
         "ai_provider_configured": ("cloudflare_worker" if settings.cloudflare_worker_url else "openai" if settings.openai_api_key else "pollinations" if settings.pollinations_api_key else "offline"),
@@ -240,7 +242,7 @@ async def dashboard_status() -> dict[str, Any]:
         "signal_engine_connected": False,
         "news_feed_connected": False,
         "execution_enabled": False,
-        "message": "Provider credentials configured; quote requests still need validation." if connected else "Add the selected provider key privately on the server to enable live market data.",
+        "message": ("Live quote provider key configured; quote requests still need validation." if live_connected else "Dukascopy historical archive is available without an API key, but it is not a live streaming quote feed. Add an optional Twelve Data key for live quote polling." if historical_available else "Add the selected provider key privately on the server to enable live market data."),
     }
 
 
