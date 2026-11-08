@@ -34,3 +34,19 @@ class BiquoteCalendarClient:
         if not frame.empty:
             frame["event_time"] = pd.to_datetime(frame["event_time"], utc=True, errors="coerce")
         return frame
+
+    async def event_history(self, event_id: str) -> list[dict]:
+        """Fetch historical actual/forecast observations for one event."""
+        from urllib.parse import quote
+        if not event_id or len(event_id) > 160:
+            raise ValueError("Invalid calendar event id.")
+        base = self.endpoint.rsplit("/", 1)[0]
+        url = f"{base}/{quote(event_id, safe='')}/history"
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+        payload = response.json()
+        rows = payload if isinstance(payload, list) else payload.get("history", payload.get("events"))
+        if not isinstance(rows, list):
+            raise ValueError("Unexpected biquote history schema: expected list or {'history': list}")
+        return [{"event_time": row.get("time", row.get("date")), "actual": row.get("actual"), "forecast": row.get("forecast"), "previous": row.get("previous"), "revised_previous": row.get("revisedPrevious")} for row in rows if isinstance(row, dict)]

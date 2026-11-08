@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     database_url: str = "sqlite:///./data/metadata.db"
     biquote_calendar_url: str = "https://biquote.io/api/calendar/upcoming"
+    biquote_history_enabled: bool = True
     biquote_importance: str = "high"
     biquote_countries: str = "US,EU,GB,JP,AU,CA,NZ,CH"
     gdelt_doc_url: str = "https://api.gdeltproject.org/api/v2/doc/doc"

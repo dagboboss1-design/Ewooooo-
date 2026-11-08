@@ -20,6 +20,7 @@ from forex_quant.providers.gdelt import GdeltClient
 from forex_quant.trade_journal import create_trade, list_trades, update_trade, performance_summary
 from forex_quant.signals import generate_signal, RiskPolicy
 from forex_quant.alerts import AlertDispatcher
+from forex_quant.news_spike import tick_spike_score, spread_guard, impacted_instruments
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = [
@@ -450,6 +451,41 @@ async def scan_signal(payload: SignalScanRequest) -> dict[str, Any]:
 async def signals() -> dict[str, Any]:
     return {"status": "scan_on_request", "signals": []}
 
+
+@app.get("/api/news/events/{event_id}/history")
+async def news_event_history(event_id: str) -> dict[str, Any]:
+    """Return provider-sourced historical releases for event calibration."""
+    settings = get_settings()
+    if not settings.biquote_history_enabled:
+        raise HTTPException(status_code=503, detail="Calendar history is disabled.")
+    try:
+        history = await BiquoteCalendarClient(settings.biquote_calendar_url).event_history(event_id)
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=502, detail=f"Calendar history unavailable: {str(exc)[:180]}")
+    return {"event_id": event_id, "source": "biquote", "history": history, "observations": len(history), "calibration_status": "ready" if len(history) >= 2 else "insufficient_history"}
+
+@app.post("/api/news/spike-check")
+async def news_spike_check(payload: dict[str, Any]) -> dict[str, Any]:
+    """Score provider-observed ticks and enforce a spread cap; never fabricate ticks."""
+    ticks, spread, maximum = payload.get("ticks"), payload.get("spread"), payload.get("maximum_spread")
+    if not isinstance(ticks, list) or len(ticks) > 5000:
+        raise HTTPException(status_code=422, detail="ticks must be a list of up to 5000 observed prices.")
+    try:
+        values = [float(value) for value in ticks]
+        spread_value, maximum_value = float(spread), float(maximum)
+        if any(not isfinite(value) or value <= 0 for value in values) or not isfinite(spread_value) or not isfinite(maximum_value):
+            raise ValueError("All tick and spread values must be finite and valid.")
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Supply numeric positive ticks, spread and maximum_spread.")
+    score = tick_spike_score(values, window=30)
+    allowed = spread_guard(spread_value, maximum_value)
+    detected = score is not None and score >= 3.0
+    return {"tick_count": len(values), "spike_z_score": score, "spike_detected": detected, "spread": spread_value, "maximum_spread": maximum_value, "spread_allowed": allowed, "alert_eligible": bool(detected and allowed), "execution_enabled": False, "note": "Observed ticks only; no live stream is implied."}
+
+@app.get("/api/news/impact/{currency}")
+async def news_currency_impact(currency: str) -> dict[str, Any]:
+    instruments = impacted_instruments(currency)
+    return {"currency": currency.upper(), "instruments": instruments, "status": "configured_mapping" if instruments else "no_mapping"}
 
 @app.get("/api/news")
 async def news() -> dict[str, Any]:

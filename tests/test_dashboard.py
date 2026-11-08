@@ -346,3 +346,29 @@ def test_ai_chat_offline_mode_does_not_claim_to_analyse_chart(monkeypatch):
     assert payload["chart_received"] is True
     assert payload["chart_analysis"] == "not_supported_offline"
     assert "cannot perform visual chart recognition" in payload["answer"]
+
+
+def test_news_spike_check_enforces_spread_guard():
+    response = client.post("/api/news/spike-check", json={"ticks":[100+i*0.01 for i in range(32)],"spread":2.0,"maximum_spread":1.0})
+    assert response.status_code == 200
+    assert response.json()["spike_detected"] is True
+    assert response.json()["alert_eligible"] is False
+    assert response.json()["execution_enabled"] is False
+
+
+def test_news_currency_impact_mapping():
+    response = client.get("/api/news/impact/USD")
+    assert response.status_code == 200 and "EUR/USD" in response.json()["instruments"]
+
+
+def test_calendar_history_route_returns_provider_records(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    class FakeCalendar:
+        def __init__(self, endpoint): pass
+        async def event_history(self, event_id):
+            assert event_id == "evt-1"
+            return [{"actual":3.1,"forecast":3.0,"previous":2.9}]
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings())
+    monkeypatch.setattr(dashboard_module, "BiquoteCalendarClient", FakeCalendar)
+    response = client.get("/api/news/events/evt-1/history")
+    assert response.status_code == 200 and response.json()["observations"] == 1
