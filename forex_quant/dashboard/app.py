@@ -4,6 +4,8 @@ import base64
 import binascii
 import json
 from math import isfinite
+import os
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +44,41 @@ ASSETS = [
 TIMEFRAMES = ["M5", "M15", "M30", "H1", "H4", "D1"]
 INTERVALS = {"M5": "5min", "M15": "15min", "M30": "30min", "H1": "1h", "H4": "4h", "D1": "1day"}
 app = FastAPI(title="Ewooooo Forex Quant Signal System", version="0.4.3")
+
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+
+@app.middleware("http")
+async def dashboard_access_guard(request, call_next):
+    """Optional HTTP Basic protection for public hosting; health probes stay public."""
+    if request.url.path == "/healthz":
+        return await call_next(request)
+    if os.getenv("DASHBOARD_AUTH_REQUIRED", "false").lower() != "true":
+        return await call_next(request)
+    username = os.getenv("DASHBOARD_USERNAME", "")
+    password = os.getenv("DASHBOARD_PASSWORD", "")
+    if not username or not password:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"detail": "Dashboard authentication is enabled but credentials are not configured."})
+    header = request.headers.get("authorization", "")
+    supplied_user = supplied_password = ""
+    if header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(header[6:], validate=True).decode("utf-8")
+            supplied_user, supplied_password = decoded.split(":", 1)
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            pass
+    valid_user = secrets.compare_digest(supplied_user, username)
+    valid_password = secrets.compare_digest(supplied_password, password)
+    if not (valid_user and valid_password):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentication required."},
+            headers={"WWW-Authenticate": 'Basic realm="Ewooooo", charset="UTF-8"'},
+        )
+    return await call_next(request)
+
 
 
 class JournalCreate(BaseModel):
