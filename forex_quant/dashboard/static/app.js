@@ -62,7 +62,71 @@ function updateAIProviderStatus(data){
 const state={symbol:'EUR/USD',timeframe:'M15',refreshTimer:null};
 async function loadDashboard(){updateWATClock();setInterval(updateWATClock,1000);const statusEl=document.getElementById('connection');try{const [cfg,status]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/dashboard/status').then(r=>r.json())]);statusEl.textContent=status.market_data_connected?'LIVE PROVIDER KEY CONFIGURED':(status.historical_data_available?'HISTORICAL ARCHIVE · NO LIVE QUOTES':'LIVE FEED NOT CONNECTED');const feed=document.getElementById('settings-feed');if(feed)feed.textContent=status.market_data_connected?'Live provider configured':(status.historical_data_available?'Dukascopy historical only':'Not connected');const ai=document.getElementById('settings-ai');if(ai)ai.textContent=status.ai_provider_configured||'offline';renderAIProviderStatus(status);refreshAIProviderStatus();const tf=document.getElementById('timeframes');tf.innerHTML=cfg.timeframes.map(t=>'<button type="button" class="'+(t===state.timeframe?'active':'')+'" data-tf="'+t+'">'+t+'</button>').join('');tf.addEventListener('click',e=>{const b=e.target.closest('button[data-tf]');if(!b)return;state.timeframe=b.dataset.tf;tf.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));loadCandles();});document.getElementById('chart-symbol').addEventListener('change',e=>{state.symbol=e.target.value;loadCandles();loadDailyBias();});await refreshQuotes();await loadCandles();await loadDailyBias();setInterval(refreshQuotes,1800000);setInterval(loadCandles,900000);setInterval(loadDailyBias,21600000);}catch(e){statusEl.textContent='DASHBOARD API UNAVAILABLE';}}
 async function refreshQuotes(){try{const [cfg,market]=await Promise.all([fetch('/api/dashboard/config').then(r=>r.json()),fetch('/api/market').then(r=>r.json())]);const bySymbol=Object.fromEntries((market.quotes||[]).map(q=>[String(q.symbol||'').replace(/_/g,'/'),q]));const unavailable=Object.fromEntries((market.unavailable||[]).map(x=>[typeof x==='string'?x:x.symbol,typeof x==='string'?'Feed not configured':x.reason]));document.getElementById('assets').innerHTML=cfg.assets.map(a=>{const q=bySymbol[a.symbol];if(q){const digits=a.symbol.includes('JPY')?3:(a.symbol==='BTC/USD'?2:a.symbol==='XAU/USD'||a.symbol==='XAG/USD'?2:5);const bid=q.bid==null?'not supplied':Number(q.bid).toFixed(digits);const ask=q.ask==null?'not supplied':Number(q.ask).toFixed(digits);return '<article class="asset"><strong>'+a.label+'</strong><div class="quote">'+Number(q.mid).toFixed(digits)+'</div><small>Bid '+bid+' · Ask '+ask+'</small><small class="live">PROVIDER DATA · '+String(q.source).toUpperCase()+'</small></article>';}return '<article class="asset"><strong>'+a.label+'</strong><small>'+a.class.toUpperCase()+'</small><small class="unavailable">'+(unavailable[a.symbol]?'Unavailable: '+unavailable[a.symbol]:'Waiting for verified feed')+'</small></article>';}).join('');const live=Object.keys(bySymbol).length;document.getElementById('connection').textContent=live?'CACHED PROVIDER QUOTES · '+live+' INSTRUMENTS':'LIVE FEED NOT CONNECTED';}catch(e){document.getElementById('connection').textContent='QUOTE UPDATE FAILED';}}
-function drawCandles(rows){const canvas=document.getElementById('candles'),ctx=canvas.getContext('2d'),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.floor(rect.width*dpr));canvas.height=Math.max(1,Math.floor(rect.height*dpr));ctx.scale(dpr,dpr);const w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h);const pad={l:8,r:66,t:14,b:24},cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;ctx.font='10px system-ui';ctx.fillStyle='#8da2bb';ctx.strokeStyle='#1b3550';ctx.lineWidth=1;const highs=rows.map(x=>Number(x.high)),lows=rows.map(x=>Number(x.low));let max=Math.max(...highs),min=Math.min(...lows);if(!Number.isFinite(max)||!Number.isFinite(min)||max<=min){document.getElementById('chart-status').textContent='Invalid candle data';return;}const extra=(max-min)*.07;max+=extra;min-=extra;const y=v=>pad.t+(max-v)/(max-min)*ch;for(let i=0;i<=4;i++){const yy=pad.t+ch*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();ctx.fillText((max-(max-min)*i/4).toFixed(state.symbol.includes('JPY')?3:state.symbol==='BTC/USD'?1:5),w-pad.r+5,yy+3);}const step=cw/rows.length,body=Math.max(2,Math.min(12,step*.62));rows.forEach((c,i)=>{const x=pad.l+i*step+step/2,o=Number(c.open),cl=Number(c.close),hi=Number(c.high),lo=Number(c.low),bull=cl>=o;ctx.strokeStyle=bull?'#19e58a':'#ff657a';ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(x,y(hi));ctx.lineTo(x,y(lo));ctx.stroke();const top=y(Math.max(o,cl)),height=Math.max(1,Math.abs(y(o)-y(cl)));ctx.fillRect(x-body/2,top,body,height);});const first=rows[0].time,last=rows[rows.length-1].time;ctx.fillStyle='#8da2bb';ctx.fillText(String(first).slice(0,16),pad.l,pad.t+ch+17);ctx.textAlign='right';ctx.fillText(String(last).slice(0,16),w-pad.r,pad.t+ch+17);ctx.textAlign='left';}
+function drawCandles(rows) {
+  requestAnimationFrame(() => drawCandlesPlotly(rows));
+}
+
+function drawCandlesPlotly(rows) {
+  const el = document.getElementById('candles');
+  if (!el) return;
+  if (!window.Plotly) {
+    el.textContent = 'Chart library unavailable. Check the network connection and reload.';
+    return;
+  }
+  if (!Array.isArray(rows) || !rows.length) {
+    el.innerHTML = '<div style="padding:24px;color:#888;text-align:center;">No verified candles available — WAIT.</div>';
+    return;
+  }
+  const validRows = rows.filter(r => r && r.time != null &&
+    ['open','high','low','close'].every(k => Number.isFinite(Number(r[k]))));
+  if (!validRows.length) {
+    el.innerHTML = '<div style="padding:24px;color:#888;text-align:center;">No valid OHLC candles available — WAIT.</div>';
+    return;
+  }
+  const times=validRows.map(r=>r.time), opens=validRows.map(r=>Number(r.open));
+  const highs=validRows.map(r=>Number(r.high)), lows=validRows.map(r=>Number(r.low));
+  const closes=validRows.map(r=>Number(r.close));
+  const volumes=validRows.map(r=>Number.isFinite(Number(r.volume))?Number(r.volume):0);
+  function ema(values,period){
+    const k=2/(period+1);let prev=values[0];const out=[prev];
+    for(let i=1;i<values.length;i++){prev=values[i]*k+prev*(1-k);out.push(prev);}
+    return out;
+  }
+  function bollinger(values,period=20,mult=2){
+    const up=[],mid=[],lo=[];
+    for(let i=0;i<values.length;i++){
+      if(i<period-1){up.push(null);mid.push(null);lo.push(null);continue;}
+      const windowValues=values.slice(i-period+1,i+1);
+      const mean=windowValues.reduce((x,y)=>x+y,0)/period;
+      const variance=windowValues.reduce((x,y)=>x+(y-mean)**2,0)/period;
+      const sd=Math.sqrt(variance);mid.push(mean);up.push(mean+mult*sd);lo.push(mean-mult*sd);
+    }
+    return {up,mid,lo};
+  }
+  const ema20=ema(closes,20),ema50=ema(closes,50),bb=bollinger(closes,20,2);
+  const barColors=closes.map((c,i)=>c>=opens[i]?'#00d47e':'#ff4d4d');
+  const traces=[
+    {type:'candlestick',x:times,open:opens,high:highs,low:lows,close:closes,name:'Price',
+      increasing:{line:{color:'#00d47e'},fillcolor:'#00d47e'},
+      decreasing:{line:{color:'#ff4d4d'},fillcolor:'#ff4d4d'},yaxis:'y'},
+    {type:'scatter',mode:'lines',x:times,y:ema20,name:'EMA20',line:{color:'#4da3ff',width:1},yaxis:'y',hoverinfo:'skip'},
+    {type:'scatter',mode:'lines',x:times,y:ema50,name:'EMA50',line:{color:'#ffaa33',width:1},yaxis:'y',hoverinfo:'skip'},
+    {type:'scatter',mode:'lines',x:times,y:bb.up,name:'BB Upper',line:{color:'#777',width:1,dash:'dot'},yaxis:'y',hoverinfo:'skip'},
+    {type:'scatter',mode:'lines',x:times,y:bb.lo,name:'BB Lower',line:{color:'#777',width:1,dash:'dot'},
+      fill:'tonexty',fillcolor:'rgba(120,120,120,0.05)',yaxis:'y',hoverinfo:'skip'},
+    {type:'bar',x:times,y:volumes,name:'Volume',marker:{color:barColors},yaxis:'y2',hoverinfo:'skip'}
+  ];
+  const layout={
+    template:'plotly_dark',autosize:true,height:500,margin:{l:58,r:18,t:42,b:42},showlegend:true,
+    legend:{orientation:'h',y:1.12,x:0,bgcolor:'rgba(0,0,0,0)'},
+    xaxis:{rangeslider:{visible:false},gridcolor:'rgba(255,255,255,0.05)',automargin:true},
+    yaxis:{gridcolor:'rgba(255,255,255,0.05)',domain:[0.28,1],automargin:true},
+    yaxis2:{gridcolor:'rgba(255,255,255,0.05)',domain:[0,0.22],automargin:true},
+    uirevision:state.symbol+':'+state.timeframe,
+    paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)'
+  };
+  Plotly.react(el,traces,layout,{responsive:true,displayModeBar:false});
+}
 
 async function loadDailyBias(){const value=document.getElementById('daily-bias-value'),detail=document.getElementById('daily-bias-detail');value.textContent='Loading D1…';try{const url='/api/market/candles?symbol='+encodeURIComponent(state.symbol)+'&timeframe=D1&outputsize=80';const r=await fetch(url),d=await r.json();if(!r.ok)throw Error(d.detail||'Daily candles unavailable');const rows=(d.candles||[]).filter(x=>Number.isFinite(Number(x.close)));if(rows.length<25)throw Error('Need at least 25 daily candles for a reliable bias estimate.');const completed=rows.slice(0,-1);const closes=completed.map(x=>Number(x.close));const ema=[];const alpha=2/21;let current=closes[0];for(const close of closes){current=close*alpha+current*(1-alpha);ema.push(current);}const last=closes[closes.length-1],avg=ema[ema.length-1],prior=ema[Math.max(0,ema.length-6)];let bias='NEUTRAL';if(last>avg&&avg>prior)bias='BULLISH';else if(last<avg&&avg<prior)bias='BEARISH';value.textContent=bias;value.dataset.bias=bias.toLowerCase();detail.textContent='Last completed D1 close '+last+' · EMA20 '+avg.toFixed(state.symbol.includes('JPY')?3:5)+' · '+completed.length+' completed bars · '+d.provider.toUpperCase();}catch(e){value.textContent='UNAVAILABLE';value.dataset.bias='neutral';detail.textContent=e.message;}}
 async function loadTechnicalAnalysis(symbol=state.symbol,timeframe=state.timeframe){
@@ -124,8 +188,8 @@ await loadTechnicalAnalysis(requestedSymbol,requestedTimeframe);
 }catch(e){
 if(requestId!==candleRequestId)return;
 window.lastCandleRows=null;
-const canvas=document.getElementById('candles'),ctx=canvas.getContext('2d');
-ctx.clearRect(0,0,canvas.width,canvas.height);
+const chart=document.getElementById('candles');
+  if(chart) chart.innerHTML='<div style="padding:24px;color:#888;text-align:center;">Chart unavailable: '+safe(e.message)+'</div>';
 status.textContent=e.message;
 document.getElementById('chart-count').textContent='No chart data';
 document.getElementById('chart-updated').textContent='';
@@ -172,44 +236,7 @@ const tf=document.getElementById('journal-timeframes');if(tf){const rows=Object.
 }
 
 
-// Interactive chart crosshair: inspect the exact OHLC values of each candle.
-(function enableCandleInspection(){
-  const canvas=document.getElementById('candles');
-  const status=document.getElementById('chart-status');
-  if(!canvas||!status)return;
-  let baseStatus=status.textContent;
-  const redraw=()=>{if(window.lastCandleRows&&window.lastCandleRows.length)drawCandles(window.lastCandleRows);};
-  canvas.addEventListener('pointermove',event=>{
-    const rows=window.lastCandleRows;
-    if(!rows||!rows.length)return;
-    const rect=canvas.getBoundingClientRect();
-    const pad={l:8,r:66};
-    const usable=Math.max(1,rect.width-pad.l-pad.r);
-    const x=Math.max(0,Math.min(usable-1,event.clientX-rect.left-pad.l));
-    const index=Math.max(0,Math.min(rows.length-1,Math.floor(x/(usable/rows.length))));
-    const candle=rows[index];
-    redraw();
-    const ctx=canvas.getContext('2d');
-    const dpr=window.devicePixelRatio||1;
-    const px=pad.l+(index+.5)*(usable/rows.length);
-    ctx.save();
-    ctx.strokeStyle='rgba(151,178,208,.65)';
-    ctx.lineWidth=1;
-    ctx.setLineDash([4,4]);
-    ctx.beginPath();ctx.moveTo(px,8);ctx.lineTo(px,rect.height-24);ctx.stroke();
-    ctx.restore();
-    status.textContent=String(candle.time)+' · O '+candle.open+' H '+candle.high+' L '+candle.low+' C '+candle.close;
-  });
-  canvas.addEventListener('pointerleave',()=>{
-    baseStatus=document.getElementById('chart-status').textContent;
-    if(window.lastCandleRows&&window.lastCandleRows.length)redraw();
-    status.textContent=baseStatus.includes(' · O ')?'OHLC candles · verified provider data':baseStatus;
-  });
-  const observer=new MutationObserver(()=>{const value=status.textContent;if(!value.includes(' · O '))baseStatus=value;});
-  observer.observe(status,{childList:true,characterData:true,subtree:true});
-})();
-
-let spikeEventTimestamp = null;
+// Plotly provides native OHLC hover inspection; canvas handlers are not required.\n\nlet spikeEventTimestamp = null;
 function updateSpikeCountdown(){
  const countdown=document.getElementById('spike-countdown');if(!countdown)return;
  if(!spikeEventTimestamp){return;}
