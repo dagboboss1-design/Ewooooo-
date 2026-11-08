@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-    market_data_provider: str = "twelve_data"
+    market_data_provider: str = "dukascopy"
     twelve_data_api_key: str = ""
     twelve_data_symbols: str = "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,EUR/GBP,AUD/NZD,XAU/USD,XAG/USD,BTC/USD"
     openai_api_key: str = ""
@@ -38,8 +38,8 @@ class Settings(BaseSettings):
         super().__init__(**data)
         if self.oanda_environment not in {"practice", "live"}:
             raise ValueError("OANDA_ENVIRONMENT must be practice or live")
-        if self.market_data_provider not in {"twelve_data", "oanda"}:
-            raise ValueError("MARKET_DATA_PROVIDER must be twelve_data or oanda")
+        if self.market_data_provider not in {"dukascopy", "twelve_data", "oanda"}:
+            raise ValueError("MARKET_DATA_PROVIDER must be dukascopy, twelve_data or oanda")
         if self.telegram_retry_attempts < 1 or self.telegram_retry_delay_seconds < 0:
             raise ValueError("Telegram retry settings are invalid")
         if self.live_trading:
