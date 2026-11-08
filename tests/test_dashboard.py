@@ -558,3 +558,23 @@ def test_paper_account_dashboard_has_manual_order_equity_and_reconciliation_cont
     assert "fetch('/api/paper/orders'" in script
     assert "fetch('/api/paper/account/snapshot'" in script
     assert "fetch('/api/paper/reconcile'" in script
+
+def test_hosted_dashboard_requires_basic_auth_when_enabled(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("DASHBOARD_USERNAME", "ewooooo-test")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "test-password")
+    denied = client.get("/", follow_redirects=False)
+    assert denied.status_code == 401
+    assert "WWW-Authenticate" in denied.headers
+    allowed = client.get("/", auth=("ewooooo-test", "test-password"))
+    assert allowed.status_code == 200
+    health = client.get("/healthz")
+    assert health.status_code == 200
+
+
+def test_hosted_dashboard_fails_closed_if_auth_secret_missing(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_AUTH_REQUIRED", "true")
+    monkeypatch.delenv("DASHBOARD_USERNAME", raising=False)
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    response = client.get("/")
+    assert response.status_code == 503
