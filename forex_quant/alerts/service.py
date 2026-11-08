@@ -64,10 +64,14 @@ class AlertDispatcher:
         if self._client is not None:
             response = await self._client.post(url, json=payload, timeout=10.0)
             response.raise_for_status()
-            return
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
+        else:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+        if "api.telegram.org" in url and response.json().get("ok") is not True:
+            raise httpx.HTTPStatusError(
+                "Telegram API returned ok=false", request=response.request, response=response
+            )
 
     async def _send_telegram(self, message):
         async with self._telegram_lock:

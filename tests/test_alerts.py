@@ -80,3 +80,24 @@ def test_negative_timing_or_retry_configuration_rejected():
         AlertDispatcher(dedupe_seconds=-1)
     with pytest.raises(ValueError):
         AlertDispatcher(retry_attempts=0)
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_telegram_api_ok_false_is_retried_and_reported():
+    route = respx.post("https://api.telegram.org/botTEST_TOKEN/sendMessage").mock(
+        side_effect=[
+            httpx.Response(200, json={"ok": False, "description": "temporary failure"}),
+            httpx.Response(200, json={"ok": True}),
+        ]
+    )
+    async with httpx.AsyncClient() as client:
+        dispatcher = AlertDispatcher(
+            telegram_bot_token="TEST_TOKEN",
+            telegram_chat_id="123",
+            telegram_min_interval_seconds=0,
+            retry_delay_seconds=0,
+            client=client,
+        )
+        result = await dispatcher.dispatch(SIGNAL)
+    assert result.telegram_sent
+    assert route.call_count == 2
