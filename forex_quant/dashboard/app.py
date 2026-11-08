@@ -266,9 +266,13 @@ async def market() -> dict[str, Any]:
             return {"status": "awaiting_provider_credentials", "provider": "twelve_data", "as_of": None, "quotes": [], "unavailable": [{"symbol": a["symbol"], "reason": "TWELVE_DATA_API_KEY is not configured."} for a in ASSETS]}
         client = TwelveDataClient(settings.twelve_data_api_key)
         quotes, unavailable = [], []
+        priority_quotes = {"EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD"}
         for asset in ASSETS:
             if asset["symbol"] == "DXY":
                 unavailable.append({"symbol": "DXY", "reason": "DXY index feed is not configured; it is not being approximated."})
+                continue
+            if asset["symbol"] not in priority_quotes:
+                unavailable.append({"symbol": asset["symbol"], "reason": "Quote polling is limited to priority instruments to preserve Twelve Data free-tier credits. Open its chart to request candles."})
                 continue
             try:
                 quote = await _cached_provider_call(("quote", "twelve_data", asset["symbol"]), 1800, lambda: client.quote(asset["symbol"]))
@@ -311,7 +315,7 @@ async def market_candles(symbol: str = "EUR/USD", timeframe: str = "M15", output
             if not settings.twelve_data_api_key:
                 raise HTTPException(status_code=503, detail="TWELVE_DATA_API_KEY is not configured.")
             try:
-                frame = await _cached_provider_call(("candles", "twelve_data", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key).candles(symbol, INTERVALS[timeframe], outputsize))
+                frame = await _cached_provider_call(("candles", "twelve_data", symbol, timeframe, outputsize), 21600 if timeframe == "D1" else 900, lambda: TwelveDataClient(settings.twelve_data_api_key, timeout=8).candles(symbol, INTERVALS[timeframe], outputsize))
                 return {"symbol": symbol, "timeframe": timeframe, "provider": "twelve_data", "data_status": "primary_feed", "candles": frame.to_dict(orient="records")}
             except (httpx.HTTPError, LookupError, ValueError) as primary_error:
                 try:
