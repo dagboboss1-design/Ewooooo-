@@ -25,6 +25,34 @@
       if(signal)lines.push('Setup: '+signal.side.toUpperCase(),'Entry: '+signal.entry,'Stop loss: '+signal.stop_loss,'Take profit: '+signal.take_profit,'Units estimate: '+signal.units,'Risk: '+(Number(signal.risk_fraction)*100).toFixed(2)+'%','Confluence score: '+signal.confidence_score+' (not win probability)');
       if(data.alert&&typeof data.alert==='object')lines.push('Alert: '+(data.alert.accepted?'accepted':'not accepted')+' · Telegram '+(data.alert.telegram_sent?'sent':'not sent')+' · Webhook '+(data.alert.webhook_sent?'sent':'not sent'));
       else if(data.alert)lines.push('Alert: '+data.alert);
+      if(signal && data.risk && data.risk.approved){
+        const actions=document.createElement('div');
+        actions.className='journal-actions';
+        const save=document.createElement('button');
+        save.type='button';
+        save.className='journal-save';
+        save.textContent='＋ Mark as taken · Save to Journal';
+        save.addEventListener('click',async()=>{
+          save.disabled=true;save.textContent='Saving…';
+          try{
+            const saved=await fetch('/api/journal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+              symbol:signal.instrument||symbol,
+              side:String(signal.side).toUpperCase(),
+              timeframe,
+              entry:Number(signal.entry),
+              stop_loss:Number(signal.stop_loss),
+              take_profit:Number(signal.take_profit),
+              setup_text:'Risk-gated scanner setup. Strategy: '+String(signal.strategy||'baseline')+'. Regime: '+String(signal.regime||'unknown')+'. Confidence score: '+String(signal.confidence_score)+' (not win probability). Invalidation: '+String(signal.invalidation||'—'),
+              source:'manual',
+              status:'open'
+            })});
+            const savedData=await saved.json();
+            if(!saved.ok)throw new Error(savedData.detail||'Journal save failed');
+            save.textContent='Taken · Saved to Journal ✓';
+          }catch(error){save.disabled=false;save.textContent='Save failed: '+error.message;}
+        });
+        actions.appendChild(save);result.appendChild(actions);
+      }
       lines.push('Broker execution: OFF');result.textContent=lines.join('\\n');
     }catch(error){result.textContent='Scan unavailable: '+error.message;}
     finally{button.disabled=false;button.textContent='Scan selected market';}
