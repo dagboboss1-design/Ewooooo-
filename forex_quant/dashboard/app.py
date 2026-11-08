@@ -851,7 +851,8 @@ async def paper_account_snapshot(payload: PaperAccountMarksRequest) -> dict[str,
             costs = CostModel(account["spread"], account["slippage"], account["commission_per_unit"])
             exit_fill = costs.exit_fill(trade["side"], float(payload.marks[trade["trade_id"]]))
             direction = 1.0 if trade["side"] == "BUY" else -1.0
-            unrealized += (exit_fill - float(trade["entry"])) * direction * remaining * float(spec["contract_size"]) * float(spec["quote_to_account_rate"])\n            unrealized -= remaining * float(account["commission_per_unit"]) * float(spec["quote_to_account_rate"])
+            unrealized += (exit_fill - float(trade["entry"])) * direction * remaining * float(spec["contract_size"]) * float(spec["quote_to_account_rate"])
+            unrealized -= remaining * float(account["commission_per_unit"]) * float(spec["quote_to_account_rate"])
         except KeyError as exc:
             raise HTTPException(status_code=422, detail=f"Missing contract specification or paper position field: {str(exc)}")
         except (TypeError, ValueError) as exc:
