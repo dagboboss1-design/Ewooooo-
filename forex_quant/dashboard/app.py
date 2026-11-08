@@ -149,7 +149,7 @@ async def readyz() -> dict[str, Any]:
     return {
         "status": "ready",
         "market_data_configured": market_configured,
-        "ai_configured": bool(settings.openai_api_key),
+        "ai_configured": bool(settings.cloudflare_worker_url or settings.pollinations_api_key or settings.openai_api_key),
         "execution_enabled": False,
     }
 
@@ -167,7 +167,7 @@ async def dashboard_status() -> dict[str, Any]:
         "status": "credentials_configured" if connected else "awaiting_provider_credentials",
         "market_data_provider": settings.market_data_provider,
         "market_data_connected": connected,
-        "ai_chat_configured": bool(settings.openai_api_key),
+        "ai_chat_configured": bool(settings.cloudflare_worker_url or settings.pollinations_api_key or settings.openai_api_key),\n        "ai_provider_priority": ["cloudflare_worker", "pollinations", "openai_legacy", "offline"],\n        "ai_provider_configured": ("cloudflare_worker" if settings.cloudflare_worker_url else "pollinations" if settings.pollinations_api_key else "openai_legacy" if settings.openai_api_key else "offline"),
         "signal_engine_connected": False,
         "news_feed_connected": False,
         "execution_enabled": False,
@@ -246,15 +246,6 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
     message = payload.message.strip()
     if not message and not payload.chart_image:
         raise HTTPException(status_code=422, detail="Please enter a trading question.")
-    if not settings.openai_api_key:
-        if payload.symbol not in {a["symbol"] for a in ASSETS if a["symbol"] != "DXY"}:
-            raise HTTPException(status_code=400, detail="Unsupported analysis instrument.")
-        answer = offline_trading_answer(message, payload.symbol, payload.timeframe, bool(payload.chart_image))
-        return {"answer": answer, "model": "ewo-offline-guide", "assistant_mode": "offline",
-                "market_data_status": "not_connected", "daily_bias": "UNAVAILABLE",
-                "symbol": payload.symbol, "timeframe": payload.timeframe,
-                "chart_received": bool(payload.chart_image),
-                "chart_analysis": "not_supported_offline" if payload.chart_image else None}
     image_url = None
     if payload.chart_image:
         try:
@@ -321,6 +312,67 @@ async def ai_chat(payload: ChatRequest) -> dict[str, Any]:
     content: list[dict[str, Any]] = [{"type": "input_text", "text": message}]
     if image_url:
         content.append({"type": "input_image", "image_url": image_url})
+
+    # Primary: Cloudflare Worker. Keep Anthropic credentials inside the Worker.
+    if settings.cloudflare_worker_url:
+        try:
+            async with httpx.AsyncClient(timeout=60) as worker_client:
+                wr = await worker_client.post(settings.cloudflare_worker_url, json={
+                    "message": message, "symbol": payload.symbol, "timeframe": payload.timeframe,
+                    "chart_image": image_url, "market_context": candle_context, "instructions": instructions,
+                })
+            wr.raise_for_status()
+            wd = wr.json()
+            answer = wd.get("answer") or wd.get("output_text")
+            if answer:
+                return {"answer": answer, "model": wd.get("model", "cloudflare-worker"),
+                    "assistant_mode": "cloudflare_worker", "provider": "cloudflare_worker",
+                    "web_search_used": bool(wd.get("web_search_used", False)),
+                    "citations": wd.get("citations", []),
+                    "market_data_status": candle_context.get("status", "unavailable"),
+                    "daily_bias": candle_context.get("daily_bias", "UNAVAILABLE"),
+                    "symbol": payload.symbol, "timeframe": payload.timeframe,
+                    "chart_received": bool(image_url), "execution_enabled": False}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            pass
+
+    # Backup: Pollinations' OpenAI-compatible Chat Completions API.
+    if settings.pollinations_api_key:
+        try:
+            user_content = message + "\\n\\nVerified market context: " + str(candle_context)
+            if image_url:
+                user_content = [{"type": "text", "text": user_content},
+                                {"type": "image_url", "image_url": {"url": image_url}}]
+            async with httpx.AsyncClient(timeout=60) as poll_client:
+                pr = await poll_client.post("https://gen.pollinations.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.pollinations_api_key}"},
+                    json={"model": settings.pollinations_model, "messages":[
+                        {"role":"system","content":instructions},
+                        {"role":"user","content":user_content}], "max_tokens":1200})
+            pr.raise_for_status()
+            pd = pr.json()
+            answer = pd.get("choices", [{}])[0].get("message", {}).get("content")
+            if answer:
+                return {"answer":answer,"model":settings.pollinations_model,
+                    "assistant_mode":"pollinations","provider":"pollinations",
+                    "web_search_used":False,"citations":[],
+                    "market_data_status":candle_context.get("status","unavailable"),
+                    "daily_bias":candle_context.get("daily_bias","UNAVAILABLE"),
+                    "symbol":payload.symbol,"timeframe":payload.timeframe,
+                    "chart_received":bool(image_url),"execution_enabled":False}
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
+            pass
+
+    if not settings.openai_api_key:
+        answer = offline_trading_answer(message, payload.symbol, payload.timeframe, bool(payload.chart_image))
+        return {"answer":answer,"model":"ewo-offline-guide","assistant_mode":"offline",
+            "provider":"offline","web_search_used":False,"citations":[],
+            "market_data_status":candle_context.get("status","not_connected"),
+            "daily_bias":candle_context.get("daily_bias","UNAVAILABLE"),
+            "symbol":payload.symbol,"timeframe":payload.timeframe,
+            "chart_received":bool(payload.chart_image),
+            "chart_analysis":"not_supported_offline" if payload.chart_image else None,
+            "execution_enabled":False}
     try:
         async with httpx.AsyncClient(timeout=45) as client:
             response = await client.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {settings.openai_api_key}"}, json={"model": settings.openai_model, "instructions": instructions, "input": [{"role": "user", "content": content}], "max_output_tokens": 1200})

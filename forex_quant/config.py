@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     twelve_data_symbols: str = "EUR/USD,GBP/USD,USD/JPY,AUD/USD,USD/CAD,EUR/GBP,AUD/NZD,XAU/USD,XAG/USD,BTC/USD"
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
+    cloudflare_worker_url: str = ""
+    pollinations_api_key: str = ""
+    pollinations_model: str = "anthropic/claude-sonnet-4.6"
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_alerts_enabled: bool = True
