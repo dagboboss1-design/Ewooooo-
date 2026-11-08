@@ -7,6 +7,7 @@
 - Persistent paper-account configuration stored in the application's database.
 - Dashboard settings for starting balance, account currency, spread, slippage, commission and explicit per-symbol contract specifications.
 - Paper position listing and partial/full simulated close controls.
+- Simulated entry fills apply configured spread/slippage; entry and exit commissions are accounted for on both sides when the symbol conversion is configured.
 - Partial-close history, remaining quantity, cumulative realized account-currency P&L and fees are persisted with the paper journal record.
 - Account snapshot endpoint calculates realized P&L, unrealized P&L and equity from supplied mark prices and explicit contract specifications.
 - Internal reconciliation endpoint checks paper journal quantity/status consistency and reports discrepancies.
