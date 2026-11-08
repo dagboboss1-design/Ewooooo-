@@ -74,6 +74,29 @@ async def dashboard() -> str:
     return (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 
 
+@app.get("/healthz")
+async def healthz() -> dict[str, str]:
+    """Liveness probe: confirms the ASGI process can answer HTTP requests."""
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz() -> dict[str, Any]:
+    """Readiness/configuration probe; missing optional credentials do not crash startup."""
+    settings = get_settings()
+    market_configured = (
+        bool(settings.twelve_data_api_key)
+        if settings.market_data_provider == "twelve_data"
+        else bool(settings.oanda_account_id and selected_oanda_token(settings))
+    )
+    return {
+        "status": "ready",
+        "market_data_configured": market_configured,
+        "ai_configured": bool(settings.openai_api_key),
+        "execution_enabled": False,
+    }
+
+
 @app.get("/api/dashboard/config")
 async def dashboard_config() -> dict[str, Any]:
     return {"assets": ASSETS, "timeframes": TIMEFRAMES, "default_timeframe": "M15"}

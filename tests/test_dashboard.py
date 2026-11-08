@@ -181,3 +181,18 @@ def test_chart_refresh_rejects_stale_responses_and_clears_failed_data():
     assert "window.lastCandleRows=null" in script
     assert "setInterval(loadCandles,60000)" in script
     assert "setInterval(loadDailyBias,300000)" in script
+
+
+def test_health_and_readiness_probes(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        market_data_provider="twelve_data", twelve_data_api_key="", openai_api_key=""
+    ))
+    health = client.get("/healthz")
+    ready = client.get("/readyz")
+    assert health.status_code == 200 and health.json() == {"status": "ok"}
+    assert ready.status_code == 200
+    assert ready.json()["status"] == "ready"
+    assert ready.json()["market_data_configured"] is False
+    assert ready.json()["ai_configured"] is False
+    assert ready.json()["execution_enabled"] is False
