@@ -245,3 +245,23 @@ def test_signal_scan_rejects_unknown_symbol():
         "quote_to_account_rate":1
     })
     assert response.status_code == 400
+
+
+def test_dashboard_has_five_focused_pages_and_navigation():
+    from pathlib import Path
+    page = client.get("/").text
+    script = Path("forex_quant/dashboard/static/app.js").read_text()
+    for page_id, label in [
+        ("markets", "Markets"),
+        ("signals", "Signals"),
+        ("ai", "AI Assistant"),
+        ("journal", "Journal"),
+        ("news", "News"),
+    ]:
+        assert f'href="#{ "ai-chat" if page_id == "ai" else page_id }" data-page="{page_id}"' in page
+        assert f'data-page="{page_id}"' in page
+        assert label in page
+    assert "function show(page)" in script
+    assert "panel.hidden=panel.dataset.page!==page" in script
+    assert "location.hash" in script
+    assert '[data-page][hidden]' in Path("forex_quant/dashboard/static/styles.css").read_text()
