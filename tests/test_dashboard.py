@@ -265,3 +265,54 @@ def test_dashboard_has_five_focused_pages_and_navigation():
     assert "panel.hidden=panel.dataset.page!==page" in script
     assert "location.hash" in script
     assert '[data-page][hidden]' in Path("forex_quant/dashboard/static/styles.css").read_text()
+
+
+
+def test_news_endpoint_returns_calendar_and_headlines(monkeypatch):
+    import pandas as pd
+    from forex_quant.dashboard import app as dashboard_module
+    class FakeCalendar:
+        def __init__(self, endpoint): pass
+        async def upcoming(self, importance, countries):
+            assert importance == "high"
+            assert "US" in countries
+            return pd.DataFrame([{"event_id":"evt-1","title":"US CPI","event_time":pd.Timestamp("2026-11-08T12:30:00Z"),"source":"biquote"}])
+    class FakeGdelt:
+        def __init__(self, endpoint): pass
+        async def articles(self, query, lookback_minutes):
+            assert "forex" in query
+            return pd.DataFrame([{"title":"Central bank update","url":"https://example.com/story","published_at":pd.Timestamp("2026-11-08T11:00:00Z"),"source":"gdelt"}])
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings())
+    monkeypatch.setattr(dashboard_module, "BiquoteCalendarClient", FakeCalendar)
+    monkeypatch.setattr(dashboard_module, "GdeltClient", FakeGdelt)
+    response = client.get("/api/news")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "live"
+    assert payload["events"][0]["title"] == "US CPI"
+    assert payload["headlines"][0]["title"] == "Central bank update"
+    assert payload["errors"] == {}
+
+
+def test_news_endpoint_reports_provider_errors_without_fake_events(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    class BrokenProvider:
+        def __init__(self, endpoint): pass
+        async def upcoming(self, **kwargs):
+            raise ValueError("calendar schema changed")
+    class EmptyHeadlines:
+        def __init__(self, endpoint): pass
+        async def articles(self, **kwargs):
+            import pandas as pd
+            return pd.DataFrame()
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings())
+    monkeypatch.setattr(dashboard_module, "BiquoteCalendarClient", BrokenProvider)
+    monkeypatch.setattr(dashboard_module, "GdeltClient", EmptyHeadlines)
+    response = client.get("/api/news")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "unavailable"
+    assert payload["events"] == []
+    assert payload["headlines"] == []
+    assert "schema changed" in payload["errors"]["calendar"]
+    assert payload["headlines_status"] == "empty"
