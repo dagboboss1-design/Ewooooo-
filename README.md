@@ -1,20 +1,22 @@
-# Forex Quant System — Phase 1 Data Layer
+# Ewooooo Forex Quant
 
-Python 3.11+. Phase 1 provides OANDA candle ingestion, Dukascopy tick download/decoding,
-biquote calendar ingestion, GDELT news ingestion, UTC/data-quality normalization,
-Parquet snapshots, and SQLAlchemy snapshot metadata.
+Mobile-first Forex market analysis and paper-trading dashboard.
 
-## Safety and scope
+## Market data providers
 
-- OANDA `practice` and `live` are supported as **market-data environments**.
-- Selecting `OANDA_ENVIRONMENT=live` does not place orders.
-- Phase 1 is data-only. There is no order-routing implementation.
-- `LIVE_TRADING=false` is retained as a fail-closed deployment setting.
-- Never commit `.env`, tokens, account IDs, or downloaded private data.
+- **Primary: Dukascopy.** The app builds intraday OHLC candles from Dukascopy's public historical tick archive. This path requires no OANDA account or OANDA API key.
+- **Secondary: Twelve Data.** Configure `TWELVE_DATA_API_KEY` privately to provide backup candles and live quote polling. It is optional; never commit the key.
+- **OANDA: optional legacy adapter only.** OANDA credentials are not required for startup, charts, signals, or paper trading. Do not set `MARKET_DATA_PROVIDER=oanda` unless eligible credentials are available.
 
-## Hosted deployment
+Set `MARKET_DATA_PROVIDER=dukascopy` for the intended Nigerian deployment. Dukascopy's public archive is historical data, not a guaranteed real-time quote stream. The dashboard must label archive candles as historical and must not claim live prices when no live quote provider is connected. D1 candles and live quote polling require the optional Twelve Data backup key.
 
-See [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md) for the password-protected Railway deployment checklist. Use the development branch and keep live trading disabled.
+## Safety and paper trading
+
+- Paper trading only. `LIVE_TRADING=false` must remain set.
+- Virtual balance and paper positions are not broker orders.
+- Missing, stale, or insufficient market data must result in WAIT/unavailable, never fabricated prices or signals.
+- Dukascopy tick volume is provider-specific, not consolidated FX exchange volume.
+- Never commit `.env`, provider tokens, account IDs, or downloaded private data.
 
 ## Setup
 
@@ -25,8 +27,9 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Fill in OANDA credentials. For PostgreSQL, install `.[postgres]` and set `DATABASE_URL`.
-SQLite is the local-development default.
+Set `MARKET_DATA_PROVIDER=dukascopy`. A Twelve Data key may be added privately as a secondary feed. OANDA credentials are not needed.
+
+For PostgreSQL, set `DATABASE_URL` to the Railway PostgreSQL connection string. SQLite remains the local-development default.
 
 ## Run tests
 
@@ -34,61 +37,14 @@ SQLite is the local-development default.
 pytest -q
 ```
 
-## Ingest OANDA candles
+## Run the dashboard
 
 ```bash
-python -m forex_quant.cli candles --instrument EUR_USD --granularity H1 --count 500
+uvicorn forex_quant.dashboard.app:app --host 0.0.0.0 --port 8080
 ```
 
-For live market-data access, set `OANDA_ENVIRONMENT=live` and `OANDA_LIVE_TOKEN`.
-For practice data, set `OANDA_ENVIRONMENT=practice` and `OANDA_PRACTICE_TOKEN`.
+## Data-source limitations
 
-## Ingest Dukascopy ticks
+Dukascopy's public historical archive may omit hours or lag. The adapter only uses completed intraday bars and rejects stale/insufficient history. Its current adapter does not provide D1 bars or a guaranteed streaming quote feed. When Dukascopy history is unavailable, Twelve Data can serve as a backup if its optional key is configured. Otherwise the API returns an unavailable/WAIT state.
 
-```bash
-python -m forex_quant.cli dukascopy --instrument EURUSD --date 2024-01-02 --hour 13
-```
-
-Dukascopy's public historical feed is not guaranteed to have every instrument/hour.
-An unavailable archive is recorded as a provider error rather than fabricated as an empty
-market observation.
-
-## Ingest calendar and news
-
-```bash
-python -m forex_quant.cli calendar
-python -m forex_quant.cli news
-```
-
-The calendar adapter expects the biquote response to contain an event list. Provider schema
-changes are surfaced as validation errors. GDELT results are news articles, not an official
-economic calendar and not a substitute for verified event actual/forecast values.
-
-## Snapshot layout
-
-Each ingestion creates a unique snapshot directory:
-
-```text
-data/
-  snapshots/<snapshot_id>/
-    candles.parquet
-    ticks.parquet
-    calendar.parquet
-    news.parquet
-    quality.json
-    manifest.json
-  metadata.db
-```
-
-Only datasets included in that snapshot are written. Snapshot IDs are immutable UUIDs.
-The manifest stores provider, ingestion time, schema version, row counts, and SHA-256 checksums.
-
-## Notes and limitations
-
-- OANDA candle volume is candle activity count, not centralized FX exchange volume.
-- Dukascopy tick volume is provider-specific and should not be treated as consolidated market volume.
-- GDELT sentiment is not FinBERT sentiment. This phase stores source metadata and article text;
-  model-based sentiment belongs to the later feature/model phases.
-- The biquote endpoint and response schema must be verified against the provider's current service.
-- Historical availability and licensing vary by provider and instrument.
-- Phase 1 does not calculate features, generate trades, or submit orders.
+Economic-calendar and news adapters are separate from price feeds. GDELT articles are not verified economic actual/forecast values. No provider failure is replaced with zero or synthetic market observations.
