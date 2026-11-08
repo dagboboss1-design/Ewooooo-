@@ -463,11 +463,12 @@ async def paper_order_create(payload: PaperOrderRequest) -> dict[str, Any]:
     quote_to_account_rate = 1.0
     if account is not None:
         from forex_quant.paper_execution import CostModel
-        entry_fill = CostModel(account["spread"], account["slippage"], account["commission_per_unit"]).entry_fill(result.side, result.entry)
         spec = account["contract_specs"].get(result.symbol)
-        if spec is not None:
-            quote_to_account_rate = float(spec["quote_to_account_rate"])
-            entry_commission = result.units * float(account["commission_per_unit"]) * quote_to_account_rate
+        if spec is None:
+            raise HTTPException(status_code=422, detail=f"Configure {result.symbol} contract size and quote-to-account conversion before paper execution.")
+        entry_fill = CostModel(account["spread"], account["slippage"], account["commission_per_unit"]).entry_fill(result.side, result.entry)
+        quote_to_account_rate = float(spec["quote_to_account_rate"])
+        entry_commission = result.units * float(account["commission_per_unit"]) * quote_to_account_rate
     metadata = json.dumps({
         "paper_order_id": result.order_id,
         "quantity_units": result.units,
