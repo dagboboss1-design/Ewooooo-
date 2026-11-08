@@ -47,6 +47,20 @@
       <div class="phase5-status"><b>Paper account · simulation only</b><span>Configure your own starting balance, account currency and instrument contract specifications. No defaults are assumed.</span>
       <div class="scan-form"><label>Starting balance<input id="paper-balance" type="number" min="0.01" step="any" placeholder="Your paper balance"></label><label>Account currency<input id="paper-currency" maxlength="8" placeholder="e.g. USD"></label><label>Spread (price units)<input id="paper-spread" type="number" min="0" step="any" value="0"></label><label>Slippage (price units)<input id="paper-slippage" type="number" min="0" step="any" value="0"></label><label>Commission per unit<input id="paper-commission" type="number" min="0" step="any" value="0"></label><label>Contract specifications (JSON)<textarea id="paper-contracts" rows="3" placeholder='{"EUR/USD":{"contract_size":1,"quote_to_account_rate":1}}'></textarea></label><button id="save-paper-account" type="button">Save paper-account settings</button></div>
       <p id="paper-account-status" class="scan-help" aria-live="polite">Paper account not loaded.</p></div>
+      <div class="phase5-status"><b>Manual paper order · simulated prices only</b><div class="scan-form">
+      <label>Instrument<select id="paper-order-symbol"><option>EUR/USD</option><option>GBP/USD</option><option>USD/JPY</option><option>AUD/USD</option><option>USD/CAD</option><option>EUR/GBP</option><option>AUD/NZD</option><option>XAU/USD</option><option>XAG/USD</option><option>BTC/USD</option></select></label>
+      <label>Side<select id="paper-order-side"><option>BUY</option><option>SELL</option></select></label>
+      <label>Timeframe<select id="paper-order-timeframe"><option>M5</option><option selected>M15</option><option>M30</option><option>H1</option><option>H4</option><option>D1</option></select></label>
+      <label>Entry price<input id="paper-order-entry" type="number" min="0.00000001" step="any" placeholder="Manual / verified price"></label>
+      <label>Stop loss<input id="paper-order-stop" type="number" min="0.00000001" step="any"></label>
+      <label>Take profit<input id="paper-order-target" type="number" min="0.00000001" step="any"></label>
+      <label>Account equity<input id="paper-order-balance" type="number" min="0.01" step="any"></label>
+      <label>Daily loss so far (%)<input id="paper-order-daily" type="number" min="0" max="99.99" step="0.01" value="0"></label>
+      <label>Weekly loss so far (%)<input id="paper-order-weekly" type="number" min="0" max="99.99" step="0.01" value="0"></label>
+      <label>Consecutive losses<input id="paper-order-losses" type="number" min="0" step="1" value="0"></label>
+      <label><input id="paper-order-kill" type="checkbox"> Emergency kill switch</label>
+      <button id="submit-paper-order" type="button">Simulate paper order</button></div>
+      <p id="paper-order-status" class="scan-help">Paper orders are simulated only; no broker request is sent.</p></div>
       <div class="phase5-status"><b>Paper-account equity</b><div id="paper-equity" class="scan-result">Configure the account and enter verified mark prices to calculate equity.</div><button id="refresh-paper-equity" type="button">Calculate equity from entered marks</button></div>
       <div class="phase5-status"><b>Open paper positions</b><button id="run-paper-reconcile" type="button">Reconcile paper journal</button><p id="paper-reconcile-status" class="scan-help">No reconciliation run yet.</p><div id="paper-positions" class="journal-list">Loading paper positions…</div></div>
     </section>
