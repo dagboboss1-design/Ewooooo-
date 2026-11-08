@@ -90,7 +90,7 @@ def test_daily_timeframe_maps_to_provider_interval(monkeypatch):
     from forex_quant.dashboard import app as dashboard_module
     import pandas as pd
     class FakeTwelveData:
-        def __init__(self, key): pass
+        def __init__(self, key, timeout=20): pass
         async def candles(self, symbol, interval, outputsize):
             assert interval == "1day"
             return pd.DataFrame([{"time":"2026-11-05","open":1.0,"high":1.1,"low":0.9,"close":1.05}])
@@ -183,8 +183,8 @@ def test_chart_refresh_rejects_stale_responses_and_clears_failed_data():
     assert "let candleRequestId=0" in script
     assert "if(requestId!==candleRequestId)return" in script
     assert "window.lastCandleRows=null" in script
-    assert "setInterval(loadCandles,60000)" in script
-    assert "setInterval(loadDailyBias,300000)" in script
+    assert "setInterval(loadCandles,900000)" in script
+    assert "setInterval(loadDailyBias,21600000)" in script
 
 
 def test_health_and_readiness_probes(monkeypatch):
