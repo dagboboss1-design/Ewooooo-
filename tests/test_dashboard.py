@@ -47,12 +47,16 @@ def test_candle_endpoint_rejects_unknown_market(monkeypatch):
     assert response.status_code == 400
 
 
-def test_ai_chat_requires_private_server_key(monkeypatch):
+def test_ai_chat_falls_back_to_offline_mode_without_private_server_key(monkeypatch):
     from forex_quant.dashboard import app as dashboard_module
     monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(openai_api_key=""))
     response = client.post("/api/ai/chat", json={"message": "Explain RSI"})
-    assert response.status_code == 503
-    assert "OPENAI_API_KEY" in response.json()["detail"]
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["assistant_mode"] == "offline"
+    assert payload["model"] == "ewo-offline-guide"
+    assert "RSI measures recent momentum" in payload["answer"]
+    assert payload["market_data_status"] == "not_connected"
 
 
 def test_live_execution_is_not_enabled():
