@@ -148,6 +148,7 @@ async function loadPaperAccount(){
   if(account.configured&&account.account){
    const a=account.account;
    document.getElementById('paper-balance').value=a.starting_balance;
+   document.getElementById('paper-order-balance').value=a.starting_balance;
    document.getElementById('paper-currency').value=a.currency;
    document.getElementById('paper-spread').value=a.spread;
    document.getElementById('paper-slippage').value=a.slippage;
@@ -194,4 +195,13 @@ document.getElementById('refresh-paper-equity')?.addEventListener('click',async(
 document.getElementById('run-paper-reconcile')?.addEventListener('click',async()=>{
  const status=document.getElementById('paper-reconcile-status');status.textContent='Checking saved paper records…';
  try{const r=await fetch('/api/paper/reconcile'),d=await r.json();if(!r.ok)throw Error(d.detail||'Reconciliation failed');status.textContent=d.status.toUpperCase()+' · '+d.checked_paper_records+' records checked · '+d.discrepancies.length+' discrepancies · internal paper ledger only.';}catch(e){status.textContent='Reconciliation unavailable: '+e.message;}
+});
+
+document.getElementById('submit-paper-order')?.addEventListener('click',async()=>{
+ const status=document.getElementById('paper-order-status'),button=document.getElementById('submit-paper-order');
+ const value=id=>Number(document.getElementById(id).value);
+ const payload={symbol:document.getElementById('paper-order-symbol').value,side:document.getElementById('paper-order-side').value,timeframe:document.getElementById('paper-order-timeframe').value,entry:value('paper-order-entry'),stop_loss:value('paper-order-stop'),take_profit:value('paper-order-target'),account_balance:value('paper-order-balance'),daily_loss_fraction:value('paper-order-daily')/100,weekly_loss_fraction:value('paper-order-weekly')/100,consecutive_losses:value('paper-order-losses'),kill_switch:document.getElementById('paper-order-kill').checked};
+ if(!payload.entry||!payload.stop_loss||!payload.take_profit||!payload.account_balance){status.textContent='Enter a positive entry, stop, target and account equity.';return;}
+ button.disabled=true;status.textContent='Checking risk gates and simulating fill…';
+ try{const r=await fetch('/api/paper/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:(d.detail?.reason||JSON.stringify(d.detail)||'Paper order rejected'));status.textContent='PAPER FILLED · '+d.paper_order.side+' '+d.paper_order.symbol+' · Entry fill '+d.simulated_entry_fill+' · Quantity '+d.paper_order.units+' generic units · risk '+d.paper_order.risk_amount+' · no broker order sent.';loadPaperAccount();loadJournal();}catch(e){status.textContent='Paper order not placed: '+e.message;}finally{button.disabled=false;}
 });
