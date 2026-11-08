@@ -612,3 +612,52 @@ def test_hosted_dashboard_fails_closed_if_auth_secret_missing(monkeypatch):
     monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
     response = client.get("/")
     assert response.status_code == 503
+
+
+def test_default_market_provider_is_dukascopy():
+    from forex_quant.config import Settings
+    assert Settings().market_data_provider == "dukascopy"
+
+
+def test_dukascopy_is_primary_without_any_provider_key(monkeypatch):
+    import pandas as pd
+    from forex_quant.dashboard import app as dashboard_module
+
+    class FakeDukascopy:
+        async def candles(self, instrument, timeframe, outputsize):
+            assert instrument == "EURUSD"
+            assert timeframe == "M15"
+            return pd.DataFrame([{
+                "time": "2026-11-08T12:00:00+00:00",
+                "instrument": instrument,
+                "granularity": timeframe,
+                "open": 1.1, "high": 1.2, "low": 1.0, "close": 1.15,
+                "volume": None, "source": "dukascopy_historical",
+            }])
+
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        market_data_provider="dukascopy", twelve_data_api_key="", oanda_practice_token="", oanda_live_token="", oanda_account_id=""
+    ))
+    monkeypatch.setattr(dashboard_module, "DukascopyClient", FakeDukascopy)
+    response = client.get("/api/market/candles?symbol=EUR/USD&timeframe=M15")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "dukascopy"
+    assert payload["data_status"] == "historical_archive_not_live"
+    assert payload["candles"][0]["close"] == 1.15
+
+
+def test_dukascopy_history_failure_without_backup_returns_unavailable_not_fake_data(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+
+    class FailedDukascopy:
+        async def candles(self, instrument, timeframe, outputsize):
+            raise LookupError("archive unavailable")
+
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        market_data_provider="dukascopy", twelve_data_api_key="", oanda_practice_token="", oanda_live_token="", oanda_account_id=""
+    ))
+    monkeypatch.setattr(dashboard_module, "DukascopyClient", FailedDukascopy)
+    response = client.get("/api/market/candles?symbol=EUR/USD&timeframe=M15")
+    assert response.status_code == 502
+    assert "WAIT" in response.json()["detail"]
