@@ -661,3 +661,26 @@ def test_dukascopy_history_failure_without_backup_returns_unavailable_not_fake_d
     response = client.get("/api/market/candles?symbol=EUR/USD&timeframe=M15")
     assert response.status_code == 502
     assert "WAIT" in response.json()["detail"]
+
+
+def test_dukascopy_status_is_historical_not_live_without_backup_key(monkeypatch):
+    from forex_quant.dashboard import app as dashboard_module
+    monkeypatch.setattr(dashboard_module, "get_settings", lambda: dashboard_module.Settings(
+        market_data_provider="dukascopy", twelve_data_api_key="", oanda_practice_token="", oanda_live_token="", oanda_account_id=""
+    ))
+    response = client.get("/api/dashboard/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["historical_data_available"] is True
+    assert payload["market_data_connected"] is False
+    assert payload["status"] == "historical_archive_only"
+    assert "not a live streaming quote feed" in payload["message"]
+
+
+def test_dashboard_exposes_nigeria_wat_clock():
+    from pathlib import Path
+    page = Path("forex_quant/dashboard/static/index.html").read_text()
+    script = Path("forex_quant/dashboard/static/app.js").read_text()
+    assert 'id="wat-clock"' in page
+    assert "Africa/Lagos" in script
+    assert "WAT" in script
