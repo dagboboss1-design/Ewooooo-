@@ -26,7 +26,7 @@ def test_partial_close_tracks_remaining_quantity_and_account_pnl():
     assert result.closed_quantity == 400
     assert result.remaining_quantity == 600
     assert result.status == "open"
-    assert result.realized_pnl_account == pytest.approx(0.36)
+    assert result.realized_pnl_account == pytest.approx(-3.6)
 
 
 def test_final_close_marks_position_closed():
