@@ -377,7 +377,7 @@ def test_calendar_history_route_returns_provider_records(monkeypatch):
 
 
 def test_news_spike_check_rejects_nonfinite_tick_values():
-    response = client.post('/api/news/spike-check', json={'ticks':[100, 100.1, float('nan')], 'spread':0.5, 'maximum_spread':1.0})
+    response = client.post('/api/news/spike-check', json={'ticks':[100, 100.1, "nan"], 'spread':0.5, 'maximum_spread':1.0})
     assert response.status_code == 422
 
 
