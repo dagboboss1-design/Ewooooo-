@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f5f7">
+  <title>Ewooooo Forex Quant — GOLD Signals</title>
+  <style>
+    :root{color-scheme:light;--bg:#f5f5f7;--card:#fff;--ink:#1d1d1f;--muted:#6e6e73;--line:#e8e8ed;--blue:#0071e3;--green:#16834a;--red:#d12d35;--amber:#9a6700;--radius:20px}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+    .shell{width:min(100% - 32px,980px);margin:0 auto;padding:30px 0 48px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}
+    .brand{display:flex;align-items:center;gap:11px;font-weight:700;letter-spacing:-.35px}
+    .brand-mark{width:36px;height:36px;border-radius:12px;background:#1d1d1f;color:white;display:grid;place-items:center;font-size:17px}
+    .brand small{display:block;color:var(--muted);font-size:11px;font-weight:500;letter-spacing:.2px;margin-top:2px}
+    .mode{font-size:11px;font-weight:700;letter-spacing:.5px;color:#8a5b00;background:#fff3d6;border:1px solid #f1dfb5;border-radius:999px;padding:8px 11px;white-space:nowrap}
+    .intro{margin:0 0 22px}
+    .eyebrow{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:1.1px;text-transform:uppercase;margin-bottom:8px}
+    h1{font-size:clamp(30px,6vw,42px);line-height:1.08;letter-spacing:-1.5px;margin:0}
+    .sub{color:var(--muted);font-size:14px;line-height:1.5;margin:10px 0 0}
+    .market{background:var(--card);border:1px solid rgba(0,0,0,.035);border-radius:var(--radius);padding:20px;box-shadow:0 5px 22px rgba(0,0,0,.045);margin-bottom:18px}
+    .market-top{display:flex;justify-content:space-between;align-items:center;gap:14px}
+    .asset{display:flex;align-items:center;gap:13px}
+    .asset-icon{width:44px;height:44px;border-radius:14px;background:#fff4dc;color:#9a6700;display:grid;place-items:center;font-size:21px}
+    .asset-name{font-size:19px;font-weight:700;letter-spacing:-.4px}
+    .asset-code{font-size:12px;color:var(--muted);margin-top:3px}
+    .feed{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;font-weight:600}
+    .dot{width:7px;height:7px;border-radius:50%;background:#d69b2d}
+    .market-bottom{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+    .price-label{font-size:11px;color:var(--muted)}
+    .price{font-size:22px;font-weight:700;letter-spacing:-.6px;margin-top:3px}
+    .timeframes{display:flex;gap:5px;flex-wrap:wrap}
+    .tf{border:0;background:#f5f5f7;color:#68686d;padding:8px 10px;border-radius:9px;font-size:11px;font-weight:650;cursor:pointer}
+    .tf.active{background:#e7f1ff;color:var(--blue)}
+    .section-head{display:flex;justify-content:space-between;align-items:end;gap:10px;margin:26px 2px 12px}
+    h2{font-size:18px;letter-spacing:-.45px;margin:0}
+    .section-note{font-size:11px;color:var(--muted)}
+    .signals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .card{background:var(--card);border:1px solid rgba(0,0,0,.035);border-radius:var(--radius);padding:17px;box-shadow:0 4px 18px rgba(0,0,0,.035);min-width:0}
+    .card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .number{width:27px;height:27px;border-radius:9px;background:#f1f1f4;color:#55555a;display:grid;place-items:center;font-size:12px;font-weight:750}
+    .status{font-size:10px;font-weight:750;letter-spacing:.55px;color:#777;background:#f2f2f4;border-radius:999px;padding:6px 8px}
+    .card h3{font-size:15px;letter-spacing:-.25px;margin:14px 0 5px}
+    .desc{font-size:11px;color:var(--muted);line-height:1.45;min-height:32px}
+    .tag-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+    .tag{font-size:10px;color:#666;background:#f5f5f7;border-radius:7px;padding:6px 7px}
+    .signal-value{font-size:14px;font-weight:750;color:#777;margin-top:14px}
+    .final{margin-top:16px;padding:21px}
+    .final-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .final-title{font-size:17px;font-weight:750;letter-spacing:-.4px}
+    .final-label{font-size:10px;font-weight:750;letter-spacing:.6px;color:var(--blue);background:#eaf3ff;padding:7px 9px;border-radius:999px}
+    .final-status{font-size:30px;font-weight:800;letter-spacing:-1px;margin:18px 0 4px;color:#777}
+    .final-explain{font-size:12px;color:var(--muted);line-height:1.5}
+    .levels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:20px}
+    .level{background:#f5f5f7;border-radius:13px;padding:12px 10px}
+    .level span{display:block;font-size:10px;color:var(--muted);margin-bottom:7px}
+    .level strong{font-size:14px;letter-spacing:-.2px}
+    .logic{margin-top:16px;background:#fff;border:1px solid var(--line);border-radius:15px;padding:15px}
+    .logic-title{font-size:12px;font-weight:750;margin-bottom:8px}
+    .logic p{font-size:11px;color:var(--muted);line-height:1.55;margin:0}
+    .notice{display:flex;gap:10px;background:#fff9e9;border:1px solid #f0e3c4;border-radius:14px;padding:13px;margin-top:17px;color:#765516;font-size:11px;line-height:1.5}
+    .notice strong{display:block;margin-bottom:2px;color:#654600}
+    footer{text-align:center;color:#9999a0;font-size:10px;margin-top:24px;line-height:1.6}
+    @media(max-width:650px){.shell{width:min(100% - 22px,520px);padding-top:20px}.signals{grid-template-columns:1fr}.card{padding:16px}.desc{min-height:0}.market{padding:16px}.levels{grid-template-columns:repeat(2,minmax(0,1fr))}.final{padding:17px}.section-head{margin-top:22px}header{margin-bottom:23px}}
+    @media(prefers-reduced-motion:no-preference){.card,.market{transition:box-shadow .2s ease,transform .2s ease}.card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.06)}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand"><div class="brand-mark">E</div><div>Ewooooo Forex Quant<small>THREE-ENGINE SIGNAL SYSTEM</small></div></div>
+      <div class="mode">DEMO PREVIEW</div>
+    </header>
+
+    <section class="intro">
+      <div class="eyebrow">Market overview</div>
+      <h1>Signal dashboard</h1>
+      <p class="sub">Three independent analysis engines. One combined trading decision.</p>
+    </section>
+
+    <section class="market" aria-label="Selected market">
+      <div class="market-top">
+        <div class="asset">
+          <div class="asset-icon">◆</div>
+          <div><div class="asset-name">Gold</div><div class="asset-code">XAUUSD · Gold / US Dollar</div></div>
+        </div>
+        <div class="feed"><span class="dot"></span> Market feed not connected</div>
+      </div>
+      <div class="market-bottom">
+        <div><div class="price-label">Live market price</div><div class="price">— — —</div></div>
+        <div class="timeframes" role="group" aria-label="Chart timeframe">
+          <button class="tf" data-tf="M5">M5</button><button class="tf active" data-tf="M15">M15</button><button class="tf" data-tf="M30">M30</button><button class="tf" data-tf="H1">H1</button><button class="tf" data-tf="H4">H4</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-head"><h2>Analysis engines</h2><span class="section-note">3 independent signals</span></div>
+    <section class="signals" aria-label="Three analysis engines">
+      <article class="card">
+        <div class="card-top"><div class="number">01</div><span class="status">AWAITING DATA</span></div>
+        <h3>Indicator signal</h3>
+        <div class="desc">Technical momentum and trend confirmation.</div>
+        <div class="tag-list"><span class="tag">RSI</span><span class="tag">MACD</span><span class="tag">EMA</span><span class="tag">Bollinger Bands</span></div>
+        <div class="signal-value">— WAITING FOR DATA</div>
+      </article>
+      <article class="card">
+        <div class="card-top"><div class="number">02</div><span class="status">AWAITING DATA</span></div>
+        <h3>Price action signal</h3>
+        <div class="desc">Candlestick behaviour and market structure.</div>
+        <div class="tag-list"><span class="tag">Pin Bar</span><span class="tag">Engulfing</span><span class="tag">Support / Resistance</span><span class="tag">BOS</span></div>
+        <div class="signal-value">— WAITING FOR DATA</div>
+      </article>
+      <article class="card">
+        <div class="card-top"><div class="number">03</div><span class="status">AWAITING DATA</span></div>
+        <h3>Smart Money / ICT</h3>
+        <div class="desc">Institutional price zones and liquidity behaviour.</div>
+        <div class="tag-list"><span class="tag">Order Blocks</span><span class="tag">FVG</span><span class="tag">Liquidity</span></div>
+        <div class="signal-value">— WAITING FOR DATA</div>
+      </article>
+    </section>
+
+    <section class="card final" aria-label="Combined final signal">
+      <div class="final-head"><div class="final-title">04 · Final combined signal</div><span class="final-label">3-ENGINE CONSENSUS</span></div>
+      <div class="final-status">WAIT</div>
+      <div class="final-explain">The final decision will appear when all three engines receive verified market data and complete their analysis.</div>
+      <div class="levels">
+        <div class="level"><span>Entry price</span><strong>—</strong></div>
+        <div class="level"><span>Stop loss</span><strong>—</strong></div>
+        <div class="level"><span>Take profit 1</span><strong>—</strong></div>
+        <div class="level"><span>Take profit 2</span><strong>—</strong></div>
+      </div>
+      <div class="logic"><div class="logic-title">How the final decision works</div><p>3 BUY = STRONG BUY · 3 SELL = STRONG SELL · 2 BUY + 1 SELL = WEAK BUY / WAIT · 2 SELL + 1 BUY = WEAK SELL / WAIT. Mixed or incomplete analysis = WAIT.</p></div>
+    </section>
+
+    <div class="notice"><div>ⓘ</div><div><strong>Preview only — no live signals yet</strong>This first step builds the GOLD homepage and signal layout. Prices, entries and trade levels will remain blank until the market-data feed and the three analysis engines are connected and tested.</div></div>
+    <footer>Ewooooo Forex Quant · Signal analysis only · Not financial advice<br>Timeframe selection is a visual control in this first homepage step.</footer>
+  </main>
+  <script>
+    document.querySelectorAll(".tf").forEach(button => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".tf").forEach(item => item.classList.remove("active"));
+        button.classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>
